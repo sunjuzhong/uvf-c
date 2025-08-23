@@ -1,0 +1,34 @@
+# Build directories
+build/
+build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled libraries/binaries / wasm outputs
+*.a
+*.so
+*.dylib
+*.wasm
+
+# Emscripten generated glue (keep source js if added later)
+uvf.js
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+
+# Logs / temp
+*.log
+*.tmp
+
+# Emscripten cache (if local)
+emcache/
+.cache/
+
+deploy/

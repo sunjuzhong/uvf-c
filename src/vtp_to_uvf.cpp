@@ -11,7 +11,7 @@
 #include <fstream>
 #include <map>
 #include <algorithm>
-#include <nlohmann/json.hpp> // 需要 nlohmann/json 头文件，或用 std::ostringstream 拼 json
+#include <sstream>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -116,7 +116,7 @@ bool write_binary_data(const vector<float>& vertices, const vector<uint32_t>& in
 
 // Write manifest.json
 bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path) {
-    using nlohmann::json;
+    // manual json assembly (avoid external dependency in minimal wasm)
     float min_coords[3] = {vertices[0], vertices[1], vertices[2]};
     float max_coords[3] = {vertices[0], vertices[1], vertices[2]};
     for (size_t i = 0; i < vertices.size() / 3; ++i) {
@@ -125,49 +125,28 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
             max_coords[j] = std::max(max_coords[j], vertices[i * 3 + j]);
         }
     }
-    json sections = json::array();
+    std::ostringstream sections_ss;
+    sections_ss << "[";
+    bool first=true;
     for (const auto& kv : offsets.fields) {
-        json sec = {
-            {"dType", kv.second.dType},
-            {"dimension", kv.second.dimension},
-            {"length", kv.second.length},
-            {"name", kv.first},
-            {"offset", kv.second.offset}
-        };
-        sections.push_back(sec);
+        if(!first) sections_ss << ","; first=false;
+        sections_ss << "{\"dType\":\""<<kv.second.dType<<"\",";
+        sections_ss << "\"dimension\":"<<kv.second.dimension<<",";
+        sections_ss << "\"length\":"<<kv.second.length<<",";
+        sections_ss << "\"name\":\""<<kv.first<<"\",";
+        sections_ss << "\"offset\":"<<kv.second.offset<<"}";
     }
+    sections_ss << "]";
     string slice_id = name + "-slice";
-    json manifest = json::array({
-        {
-            {"attributions", { {"members", {slice_id}} }},
-            {"id", "root_group"},
-            {"properties", { {"transform", {1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0}}, {"type", 0} }},
-            {"type", "GeometryGroup"}
-        },
-        {
-            {"attributions", { {"edges", json::array()}, {"faces", {name}}, {"vertices", json::array()} }},
-            {"id", slice_id},
-            {"properties", json::object()},
-            {"resources", { {"buffers", { {"path", bin_path}, {"sections", sections}, {"type", "buffers"} } } }},
-            {"type", "SolidGeometry"}
-        },
-        {
-            {"attributions", { {"packedParentId", slice_id} }},
-            {"id", name},
-            {"properties", {
-                {"alpha", 1.0},
-                {"bufferLocations", {
-                    {"indices", json::array({ json{{"bufNum", 0}, {"endIndex", static_cast<int>(indices.size()/3)}, {"startIndex", 0}} }) }
-                }},
-                {"color", 16777215}
-            }},
-            {"type", "Face"}
-        }
-    });
+    std::ostringstream manifest_ss;
+    manifest_ss << "[";
+    manifest_ss << "{\"attributions\":{\"members\":[\""<<slice_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
+    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<slice_id<<"\",\"properties\":{},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<slice_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215},\"type\":\"Face\"}]";
     manifest_path = output_dir + "/manifest.json";
     std::ofstream ofs(manifest_path);
     if (!ofs) return false;
-    ofs << manifest.dump(2);
+    ofs << manifest_ss.str();
     ofs.close();
     return true;
 }

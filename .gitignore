@@ -5,6 +5,8 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+third_party/
+dist
 
 # Compiled libraries/binaries / wasm outputs
 *.a

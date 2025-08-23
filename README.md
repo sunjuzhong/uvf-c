@@ -17,7 +17,7 @@ make
 source /path/to/emsdk/emsdk_env.sh
 mkdir build-wasm && cd build-wasm
 emcmake cmake ..
-make
+cmake --build . -j
 ```
 
 生成的 `uvf.wasm` 和 `uvf.js` 可用于 Web 前端。
@@ -39,6 +39,21 @@ UVFModule().then(Module => {
   }
 });
 ```
+
+### 原生 vs WASM
+- 原生：生成 `libuvf.a` + `uvf_cli`
+- WASM：生成 `uvf.js` (glue) + `uvf.wasm`，通过 `UVFModule()` 异步加载
+
+### Demo 运行步骤
+1. 构建 wasm (见上)
+2. 将 `uvf.js` 与 `uvf.wasm` 放在 `index.html` 同目录
+3. 启动静态服务器（避免浏览器 file:// 限制）
+```sh
+python3 -m http.server 8080
+```
+4. 浏览器访问 http://localhost:8080 ，选择 .vtp 转换
+
+若需要 Worker 模式，可把 import 改到 worker 内并通过 postMessage 传递 ArrayBuffer。
 
 ## 说明
 - 你可以在 `src/vtp_to_uvf.cpp` 实现更复杂的 VTP 解析和 UVF 生成逻辑。

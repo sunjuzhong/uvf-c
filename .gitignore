@@ -7,6 +7,7 @@ cmake_install.cmake
 Makefile
 third_party/
 dist
+assets
 
 # Compiled libraries/binaries / wasm outputs
 *.a

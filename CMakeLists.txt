@@ -16,6 +16,8 @@ find_package(VTK REQUIRED COMPONENTS
     CommonCore
     CommonDataModel
     IOXML
+    IOLegacy
+    FiltersGeometry
 )
 
 if(NOT VTK_FOUND)

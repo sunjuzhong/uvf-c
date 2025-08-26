@@ -1,6 +1,10 @@
 
 #include <vtkSmartPointer.h>
 #include <vtkXMLPolyDataReader.h>
+#include <vtkPolyDataReader.h>
+#include <vtkUnstructuredGridReader.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkGeometryFilter.h>
 #include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkDataArray.h>
@@ -29,12 +33,59 @@ struct UVFOffsets {
     map<string, Info> fields;
 };
 
-// Simple wrapper to read a VTP file and return vtkPolyData
-vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* vtp_path) {
-    auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-    reader->SetFileName(vtp_path);
-    reader->Update();
-    return reader->GetOutput();
+// Detect extension helper
+static std::string file_ext_lower(const char* path){
+    std::string s(path?path:"");
+    auto pos = s.find_last_of('.');
+    if(pos==std::string::npos) return ""; 
+    std::string ext = s.substr(pos+1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    return ext;
+}
+
+// Simple wrapper to read either VTP (XML PolyData) or legacy VTK (PolyData or UnstructuredGrid) and return vtkPolyData
+vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* path) {
+    if(!path) return nullptr;
+    std::string ext = file_ext_lower(path);
+    vtkSmartPointer<vtkPolyData> output;
+    if(ext == "vtp") {
+        auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+        reader->SetFileName(path);
+        if(!reader->CanReadFile(path)) return nullptr;
+        reader->Update();
+        output = reader->GetOutput();
+    } else if(ext == "vtk") {
+        // Try legacy polydata reader first
+        auto pdReader = vtkSmartPointer<vtkPolyDataReader>::New();
+        pdReader->SetFileName(path);
+        if(pdReader->IsFilePolyData()) {
+            pdReader->Update();
+            output = pdReader->GetOutput();
+        } else {
+            // Try unstructured grid then convert via geometry filter
+            auto ugReader = vtkSmartPointer<vtkUnstructuredGridReader>::New();
+            ugReader->SetFileName(path);
+            if(ugReader->IsFileUnstructuredGrid()) {
+                ugReader->Update();
+                auto geom = vtkSmartPointer<vtkGeometryFilter>::New();
+                geom->SetInputData(ugReader->GetOutput());
+                geom->Update();
+                output = geom->GetOutput();
+            }
+        }
+    } else {
+        // Unknown extension; still attempt XML polydata in case
+        auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+        reader->SetFileName(path);
+        if(reader->CanReadFile(path)) {
+            reader->Update();
+            output = reader->GetOutput();
+        }
+    }
+    if(output && output->GetNumberOfPoints()==0) { // Guard against empty dataset leading to downstream issues
+        return nullptr;
+    }
+    return output;
 }
 
 // Parse VTP file, extract vertices, indices, scalar fields
@@ -166,6 +217,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     vector<float> vertices;
     vector<uint32_t> indices;
     map<string, vector<float>> scalar_data;
+    if(!poly->GetPoints()) return false;
     // 提取数据
     auto pts = poly->GetPoints();
     vtkIdType nPts = pts->GetNumberOfPoints();

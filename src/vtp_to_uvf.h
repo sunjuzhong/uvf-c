@@ -3,5 +3,6 @@
 #include <vtkPolyData.h>
 #include <string>
 
-vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* vtp_path);
+// Parse either .vtp (XML) or legacy .vtk polydata/unstructured grid into vtkPolyData
+vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* path);
 bool generate_uvf(vtkPolyData* poly, const char* uvf_dir);

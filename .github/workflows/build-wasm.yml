@@ -1,0 +1,115 @@
+name: build-wasm
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache emsdk
+        id: cache-emsdk
+        uses: actions/cache@v4
+        with:
+            path: | 
+              emsdk
+              ~/.emscripten_cache
+              ~/.emscripten_ports
+            key: emsdk-${{ runner.os }}-3.1.64
+
+      - name: Setup emsdk
+        if: steps.cache-emsdk.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git emsdk
+          cd emsdk
+          ./emsdk install 3.1.64
+          ./emsdk activate 3.1.64
+
+      - name: Activate emsdk env
+        run: |
+          source emsdk/emsdk_env.sh
+          emcc -v
+        shell: bash
+
+      - name: Cache VTK wasm build
+        id: cache-vtk
+        uses: actions/cache@v4
+        with:
+          path: third_party/vtk/build-wasm
+          key: vtk-wasm-${{ runner.os }}-v9.4.2-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Prepare VTK (clone minimal)
+        if: steps.cache-vtk.outputs.cache-hit != 'true'
+        run: |
+          source emsdk/emsdk_env.sh
+          mkdir -p third_party
+          if [ ! -d third_party/vtk ]; then
+            git clone --depth=1 --branch v9.4.2 https://github.com/Kitware/VTK.git third_party/vtk
+          fi
+          cd third_party/vtk
+          mkdir -p build-wasm && cd build-wasm
+          emcmake cmake .. \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DVTK_BUILD_TESTING=OFF \
+            -DVTK_BUILD_EXAMPLES=OFF \
+            -DVTK_BUILD_ALL_MODULES=OFF \
+            -DVTK_ENABLE_WRAPPING=OFF \
+            -DVTK_WRAP_PYTHON=OFF \
+            -DVTK_WRAP_JAVA=OFF \
+            -DVTK_BUILD_DOCUMENTATION=OFF \
+            -DVTK_ENABLE_LOGGING=OFF \
+            -DVTK_GROUP_ENABLE_StandAlone=DEFAULT \
+            -DVTK_GROUP_ENABLE_Rendering=NO \
+            -DVTK_GROUP_ENABLE_Imaging=NO \
+            -DVTK_GROUP_ENABLE_Web=NO \
+            -DVTK_GROUP_ENABLE_Views=NO \
+            -DVTK_USE_MPI=OFF \
+            -DVTK_MODULE_ENABLE_VTK_CommonCore=YES \
+            -DVTK_MODULE_ENABLE_VTK_CommonDataModel=YES \
+            -DVTK_MODULE_ENABLE_VTK_CommonExecutionModel=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOCore=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOXML=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOXMLParser=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
+            -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO
+          cmake --build . -j 4
+
+      - name: Configure project (wasm)
+        run: |
+          source emsdk/emsdk_env.sh
+          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/lib/cmake/vtk-9.4 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
+        shell: bash
+
+      - name: Build project (wasm)
+        run: |
+          source emsdk/emsdk_env.sh
+          cmake --build build-wasm -j 4
+        shell: bash
+
+      - name: Upload wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: uvf-wasm
+          path: |
+            build-wasm/uvf.wasm
+            build-wasm/uvf.js
+            index.html
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          ls -lh build-wasm || true
+          echo "Artifacts uploaded: uvf-wasm"
+        shell: bash

@@ -1,0 +1,9 @@
+# Exclude local build outputs and caches
+build/
+build-wasm/
+third_party/vtk/build-wasm/
+.git
+.gitignore
+.DS_Store
+*.swp
+node_modules/

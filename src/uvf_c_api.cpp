@@ -91,7 +91,7 @@ int generate_uvf_directory(const char* input_dir, const char* uvf_dir) {
     try {
         // Count files first
         int file_count = 0;
-        for (const auto& entry : std::__fs::filesystem::directory_iterator(input_dir)) {
+    for (const auto& entry : std::filesystem::directory_iterator(input_dir)) {
             if (entry.is_regular_file()) {
                 std::string ext = entry.path().extension().string();
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -160,7 +160,7 @@ const char* uvf_get_last_operation_type(){
 // Check if a path is a directory
 int uvf_is_directory(const char* path) {
     try {
-        return std::__fs::filesystem::is_directory(path) ? 1 : 0;
+    return std::filesystem::is_directory(path) ? 1 : 0;
     } catch (...) {
         return 0;
     }
@@ -170,7 +170,7 @@ int uvf_is_directory(const char* path) {
 int uvf_count_vtk_files(const char* dir_path) {
     try {
         int count = 0;
-        for (const auto& entry : std::__fs::filesystem::directory_iterator(dir_path)) {
+    for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
             if (entry.is_regular_file()) {
                 std::string ext = entry.path().extension().string();
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);

@@ -3,13 +3,10 @@ project(uvf_converter)
 
 option(UVF_BUILD_CLI "Build native CLI" ON)
 
-
-# Emscripten toolchain
-if("${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
+# Enforce C++17 for all builds (filesystem, etc.)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Find VTK (native & wasm both need a build of VTK; for wasm you must pre-build VTK with emscripten toolchain)
 find_package(VTK REQUIRED COMPONENTS

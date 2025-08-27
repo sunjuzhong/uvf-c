@@ -246,7 +246,7 @@ bool process_directory_structure(const char* input_dir, const char* uvf_dir) {
     vector<string> file_labels;
     
     try {
-        for (const auto& entry : std::__fs::filesystem::directory_iterator(input_dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(input_dir)) {
             if (entry.is_regular_file()) {
                 string ext = entry.path().extension().string();
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);

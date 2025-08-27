@@ -16,6 +16,7 @@
 #include <map>
 #include <algorithm>
 #include <sstream>
+#include <cmath>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -166,16 +167,48 @@ bool write_binary_data(const vector<float>& vertices, const vector<uint32_t>& in
 }
 
 // Write manifest.json
-bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path) {
-    // manual json assembly (avoid external dependency in minimal wasm)
-    float min_coords[3] = {vertices[0], vertices[1], vertices[2]};
-    float max_coords[3] = {vertices[0], vertices[1], vertices[2]};
-    for (size_t i = 0; i < vertices.size() / 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            min_coords[j] = std::min(min_coords[j], vertices[i * 3 + j]);
-            max_coords[j] = std::max(max_coords[j], vertices[i * 3 + j]);
+// Classify geometry kind based on simple heuristics
+static string classify_geometry_kind(vtkPolyData* poly, const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const string& baseName) {
+    if(poly) {
+        bool hasLines = poly->GetLines() && poly->GetLines()->GetNumberOfCells() > 0;
+        bool hasPolys = poly->GetPolys() && poly->GetPolys()->GetNumberOfCells() > 0;
+        if(hasLines && !hasPolys) return "streamline"; // pure line dataset
+        // Bounding box to detect slice (planar)
+        if(!vertices.empty()) {
+            float minv[3] = {vertices[0], vertices[1], vertices[2]};
+            float maxv[3] = {vertices[0], vertices[1], vertices[2]};
+            for(size_t i=0;i<vertices.size()/3;i++) {
+                for(int j=0;j<3;j++) {
+                    float v = vertices[i*3+j];
+                    if(v<minv[j]) minv[j]=v;
+                    if(v>maxv[j]) maxv[j]=v;
+                }
+            }
+            float ex = maxv[0]-minv[0];
+            float ey = maxv[1]-minv[1];
+            float ez = maxv[2]-minv[2];
+            float diag = std::sqrt(ex*ex+ey*ey+ez*ez);
+            float eps = diag * 0.01f + 1e-6f;
+            if(diag > 0.f && (ex < eps || ey < eps || ez < eps)) {
+                return "slice";
+            }
+        }
+        // isosurface heuristic: polygonal, has scalar arrays and baseName / array contains 'iso'
+        if(hasPolys) {
+            bool hasScalar = !scalar_data.empty();
+            if(hasScalar) {
+                auto lowerContains = [](const string& s){
+                    string t=s; std::transform(t.begin(), t.end(), t.begin(), ::tolower); return t.find("iso")!=string::npos; };
+                if(lowerContains(baseName)) return "isosurface";
+                for(const auto& kv: scalar_data) { if(lowerContains(kv.first)) return "isosurface"; }
+            }
         }
     }
+    return "surface"; // default
+}
+
+// New manifest creator accepting geometry kind
+bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path, const string& geom_kind) {
     std::ostringstream sections_ss;
     sections_ss << "[";
     bool first=true;
@@ -188,18 +221,23 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
         sections_ss << "\"offset\":"<<kv.second.offset<<"}";
     }
     sections_ss << "]";
-    string slice_id = name + "-slice";
+    string container_id = name + "_geom"; // stable id without forcing slice suffix
     std::ostringstream manifest_ss;
     manifest_ss << "[";
-    manifest_ss << "{\"attributions\":{\"members\":[\""<<slice_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
-    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<slice_id<<"\",\"properties\":{},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
-    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<slice_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215},\"type\":\"Face\"}]";
+    manifest_ss << "{\"attributions\":{\"members\":[\""<<container_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
+    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<container_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<container_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
     manifest_path = output_dir + "/manifest.json";
     std::ofstream ofs(manifest_path);
     if (!ofs) return false;
     ofs << manifest_ss.str();
     ofs.close();
     return true;
+}
+
+// Backwards compatibility wrapper (defaults to surface)
+bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path) {
+    return create_manifest(vertices, indices, scalar_data, offsets, bin_path, name, output_dir, manifest_path, "surface");
 }
 
 // 递归创建目录
@@ -318,6 +356,8 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     UVFOffsets offsets;
     if (!write_binary_data(vertices, indices, scalar_data, bin_path, offsets)) return false;
     string manifest_path;
-    if (!create_manifest(vertices, indices, scalar_data, offsets, "resources/uvf/uvf.bin", "uvf", out_dir, manifest_path)) return false;
+    // Determine geometry kind from original polydata & data
+    string geomKind = classify_geometry_kind(poly, vertices, indices, scalar_data, "uvf");
+    if (!create_manifest(vertices, indices, scalar_data, offsets, "resources/uvf/uvf.bin", "uvf", out_dir, manifest_path, geomKind)) return false;
     return true;
 }

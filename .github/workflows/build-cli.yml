@@ -1,0 +1,145 @@
+name: build-cli
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cli:
+    name: CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache VTK native build
+        id: cache-vtk
+        uses: actions/cache@v4
+        with:
+          path: third_party/vtk/build
+          key: vtk-native-${{ runner.os }}-v9.3.0-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure & build VTK (minimal)
+        if: steps.cache-vtk.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p third_party/vtk/build
+          cd third_party/vtk/build
+          cmake .. \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DVTK_BUILD_TESTING=OFF \
+            -DVTK_BUILD_EXAMPLES=OFF \
+            -DVTK_BUILD_ALL_MODULES=OFF \
+            -DVTK_ENABLE_WRAPPING=OFF \
+            -DVTK_WRAP_PYTHON=OFF \
+            -DVTK_WRAP_JAVA=OFF \
+            -DVTK_BUILD_DOCUMENTATION=OFF \
+            -DVTK_ENABLE_LOGGING=OFF \
+            -DVTK_GROUP_ENABLE_StandAlone=DEFAULT \
+            -DVTK_GROUP_ENABLE_Rendering=NO \
+            -DVTK_GROUP_ENABLE_Imaging=NO \
+            -DVTK_GROUP_ENABLE_Web=NO \
+            -DVTK_GROUP_ENABLE_Views=NO \
+            -DVTK_USE_MPI=OFF \
+            -DVTK_MODULE_ENABLE_VTK_CommonCore=YES \
+            -DVTK_MODULE_ENABLE_VTK_CommonDataModel=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOCore=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOXML=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOXMLParser=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install
+          cmake --build . -j 4
+          cmake --install .
+
+      - name: Configure project (native CLI)
+        shell: bash
+        run: |
+          rm -rf build
+          VTK_DIR_CANDIDATE="$(echo $PWD/third_party/vtk/build/install/lib/cmake/vtk-9.3*)"
+          echo "Using VTK_DIR=$VTK_DIR_CANDIDATE"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DVTK_DIR="$VTK_DIR_CANDIDATE"
+
+      - name: Build CLI
+        shell: bash
+        run: |
+          cmake --build build -j 4 --target uvf_cli
+
+      - name: Smoke test CLI
+        shell: bash
+        run: |
+          file build/uvf_cli || ls -lh build || true
+          ./build/uvf_cli --help || true
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/uvf_cli dist/ || true
+          cp assets/star.vtp dist/ 2>/dev/null || true
+          echo "Commit: $GITHUB_SHA" > dist/BUILD_INFO.txt
+          uname -a >> dist/BUILD_INFO.txt || true
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uvf-cli-${{ runner.os }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Package release asset (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          TAR_NAME=uvf-cli-${{ github.ref_name }}-${{ runner.os }}.tar.gz
+          tar -czf "$TAR_NAME" -C dist .
+          ls -lh "$TAR_NAME"
+
+      - name: Create / Update GitHub Release (tag only, linux)
+        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'Linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            uvf-cli-${{ github.ref_name }}-Linux.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS asset to Release (tag only, macos)
+        if: startsWith(github.ref, 'refs/tags/') && runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            uvf-cli-${{ github.ref_name }}-macOS.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "VTK cache hit: ${{ steps.cache-vtk.outputs.cache-hit }}"
+          ls -lh dist || true
+          echo "Artifacts uploaded: uvf-cli-${{ runner.os }}"
+

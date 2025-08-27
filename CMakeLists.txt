@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 project(uvf_converter)
 
 option(UVF_BUILD_CLI "Build native CLI" ON)
+option(UVF_ENABLE_TESTS "Build tests" ON)
 
 # Enforce C++17 for all builds (filesystem, etc.)
 set(CMAKE_CXX_STANDARD 17)
@@ -19,6 +20,25 @@ find_package(VTK REQUIRED COMPONENTS
 
 if(NOT VTK_FOUND)
     message(FATAL_ERROR "VTK not found with required minimal components")
+endif()
+
+# Tests
+if(UVF_ENABLE_TESTS AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
+    enable_testing()
+    add_executable(uvf_tests
+        tests/test_geom_kind.cpp
+    )
+    target_link_libraries(uvf_tests PRIVATE uvf ${VTK_LIBRARIES})
+    target_include_directories(uvf_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME uvf_geom_kind COMMAND uvf_tests)
+
+    add_executable(uvf_file_tests
+        tests/test_file_inputs.cpp
+    )
+    target_link_libraries(uvf_file_tests PRIVATE uvf ${VTK_LIBRARIES})
+    target_include_directories(uvf_file_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(uvf_file_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+    add_test(NAME uvf_file_inputs COMMAND uvf_file_tests)
 endif()
 
 if(TARGET VTK::FiltersCore)

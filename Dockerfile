@@ -2,7 +2,7 @@
 # Stage 1: Build minimal VTK for wasm
 ###########################
 FROM emscripten/emsdk:3.1.64 AS vtk
-ARG VTK_TAG=v9.4.2
+ARG VTK_TAG=v9.3.0
 ARG VTK_PARALLEL_JOBS
 # VTK_PARALLEL_JOBS: optional override; fallback to nproc at build time
 ENV VTK_TAG=${VTK_TAG} VTK_PARALLEL_JOBS=${VTK_PARALLEL_JOBS}
@@ -34,7 +34,9 @@ RUN emcmake cmake .. \
   -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
   -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
   -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
-  -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO
+  -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO \
+  -DVTK_MODULE_ENABLE_VTK_IOCellGrid=NO \
+  -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO
 RUN : "${VTK_PARALLEL_JOBS:=$(nproc)}" && echo "[info] Building VTK with ${VTK_PARALLEL_JOBS} jobs" && cmake --build . -j "${VTK_PARALLEL_JOBS}"
 
 ###########################
@@ -54,7 +56,7 @@ COPY index.html ./
 
 # Bring in built VTK
 COPY --from=vtk /opt/vtk/build-wasm /opt/vtk/build-wasm
-ENV VTK_DIR=/opt/vtk/build-wasm/lib/cmake/vtk-9.4
+ENV VTK_DIR=/opt/vtk/build-wasm/lib/cmake/vtk-9.3
 
 # Clean any prior directory (defensive) then configure & build
 RUN rm -rf build-wasm \

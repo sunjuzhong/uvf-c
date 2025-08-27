@@ -46,7 +46,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/vtk/build-wasm
-          key: vtk-wasm-${{ runner.os }}-v9.4.2-${{ hashFiles('CMakeLists.txt') }}
+          key: vtk-wasm-${{ runner.os }}-v9.3.0-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Prepare VTK (clone minimal)
         if: steps.cache-vtk.outputs.cache-hit != 'true'
@@ -54,7 +54,7 @@ jobs:
           source emsdk/emsdk_env.sh
           mkdir -p third_party
           if [ ! -d third_party/vtk ]; then
-            git clone --depth=1 --branch v9.4.2 https://github.com/Kitware/VTK.git third_party/vtk
+            git clone --depth=1 --branch v9.3.0 https://github.com/Kitware/VTK.git third_party/vtk
           fi
           cd third_party/vtk
           mkdir -p build-wasm && cd build-wasm
@@ -83,13 +83,15 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
             -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
             -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO
+            -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO \
+            -DVTK_MODULE_ENABLE_VTK_IOCellGrid=NO \
+            -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO
           cmake --build . -j 4
 
       - name: Configure project (wasm)
         run: |
           source emsdk/emsdk_env.sh
-          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/lib/cmake/vtk-9.4 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
+          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/lib/cmake/vtk-9.3 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
         shell: bash
 
       - name: Build project (wasm)
@@ -98,14 +100,18 @@ jobs:
           cmake --build build-wasm -j 4
         shell: bash
 
+
+      - name: Copy artifacts to dist
+        run: |
+          mkdir -p dist
+          cp build-wasm/uvf.wasm build-wasm/uvf.js dist/ || true
+          cp index.html demo.js dist/ || true
+
       - name: Upload wasm artifacts
         uses: actions/upload-artifact@v4
         with:
           name: uvf-wasm
-          path: |
-            build-wasm/uvf.wasm
-            build-wasm/uvf.js
-            index.html
+          path: dist/
           if-no-files-found: error
 
       - name: Summary

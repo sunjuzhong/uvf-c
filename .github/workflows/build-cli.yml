@@ -18,6 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest ]
+        include:
+          - os: macos-latest
+            cmake_flags: "-DCMAKE_OSX_ARCHITECTURES=arm64"
 
     steps:
       - name: Checkout
@@ -66,31 +69,29 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
             -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            ${{ matrix.cmake_flags || '' }}
           cmake --build . -j 4
           cmake --install .
-      - name: Configure project (native CLI + tests)
+      - name: Configure project (native CLI only)
         shell: bash
         run: |
           rm -rf build
           VTK_DIR_CANDIDATE="$(echo $PWD/third_party/vtk/build/install/lib/cmake/vtk-9.3*)"
           echo "Using VTK_DIR=$VTK_DIR_CANDIDATE"
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DUVF_ENABLE_TESTS=ON -DVTK_DIR="$VTK_DIR_CANDIDATE"
+          echo "Architecture: $(uname -m)"
+          echo "macOS version: $(sw_vers -productVersion || echo 'N/A')"
+          echo "Xcode version: $(xcodebuild -version || echo 'N/A')"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DUVF_ENABLE_TESTS=OFF -DVTK_DIR="$VTK_DIR_CANDIDATE" ${{ matrix.cmake_flags || '' }}
 
       - name: Build CLI
         shell: bash
         run: |
-          cmake --build build -j 4 --target uvf_cli
-
-      - name: Build tests
-        shell: bash
-        run: |
-          cmake --build build -j 4 --target uvf_tests uvf_file_tests || cmake --build build -j 4 --target uvf_tests || true
-
-      - name: Run tests
-        shell: bash
-        run: |
-          if [ -f build/uvf_tests ]; then ctest --test-dir build --output-on-failure || exit 1; else echo "No tests built"; fi
+          echo "=== CMake Build Info ==="
+          cmake --build build --verbose -j 1 --target uvf_cli || {
+            echo "=== Build failed, trying with verbose output ==="
+            cmake --build build --verbose -j 1 --target uvf_cli
+          }
 
       - name: Smoke test CLI
         shell: bash

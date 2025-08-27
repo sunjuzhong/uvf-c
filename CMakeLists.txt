@@ -36,6 +36,9 @@ if("${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
     # Wasm build: produce a JS+WASM module exporting C API
     add_executable(uvf_wasm
         src/vtp_to_uvf.cpp
+        src/vtk_structured_parser.cpp
+        src/multi_file_parser.cpp
+        src/id_utils.cpp
         src/uvf_c_api.cpp
     )
     # Provide third_party/nlohmann if exists
@@ -52,12 +55,29 @@ else()
     # Native build: static lib + CLI tool
     add_library(uvf STATIC
         src/vtp_to_uvf.cpp
+        src/vtk_structured_parser.cpp
+        src/multi_file_parser.cpp
+        src/id_utils.cpp
         src/uvf_c_api.cpp
     )
     if(UVF_BUILD_CLI)
-        add_executable(uvf_cli src/main.cpp src/vtp_to_uvf.cpp)
+        add_executable(uvf_cli 
+            src/main.cpp 
+            src/vtp_to_uvf.cpp
+            src/vtk_structured_parser.cpp
+            src/multi_file_parser.cpp
+            src/id_utils.cpp
+        )
+        # Provide third_party/nlohmann if exists
+        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)
+            target_include_directories(uvf_cli PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)
+        endif()
         target_link_libraries(uvf_cli PRIVATE ${VTK_LIBRARIES})
     endif()
     target_include_directories(uvf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # Provide third_party/nlohmann if exists
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)
+        target_include_directories(uvf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)
+    endif()
     target_link_libraries(uvf PRIVATE ${VTK_LIBRARIES})
 endif()

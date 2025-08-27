@@ -211,6 +211,59 @@ inline void make_dirs(const std::string& path) {
 #endif
 }
 
+// Extract geometry data helper function (for structured parser)
+bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vector<uint32_t>& indices, map<string, vector<float>>& scalar_data) {
+    if (!polydata || !polydata->GetPoints()) return false;
+    
+    vertices.clear();
+    indices.clear();
+    scalar_data.clear();
+    
+    // Extract vertices
+    auto pts = polydata->GetPoints();
+    vtkIdType nPts = pts->GetNumberOfPoints();
+    vertices.resize(nPts * 3);
+    for (vtkIdType i = 0; i < nPts; ++i) {
+        double p[3];
+        pts->GetPoint(i, p);
+        vertices[i * 3 + 0] = static_cast<float>(p[0]);
+        vertices[i * 3 + 1] = static_cast<float>(p[1]);
+        vertices[i * 3 + 2] = static_cast<float>(p[2]);
+    }
+    
+    // Triangulate polys
+    auto polys = polydata->GetPolys();
+    auto idList = vtkSmartPointer<vtkIdList>::New();
+    polys->InitTraversal();
+    while (polys->GetNextCell(idList)) {
+        if (idList->GetNumberOfIds() < 3) continue;
+        for (vtkIdType j = 1; j < idList->GetNumberOfIds() - 1; ++j) {
+            indices.push_back(static_cast<uint32_t>(idList->GetId(0)));
+            indices.push_back(static_cast<uint32_t>(idList->GetId(j)));
+            indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
+        }
+    }
+    
+    // Extract scalar fields
+    auto pd = polydata->GetPointData();
+    for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
+        auto arr = pd->GetArray(i);
+        if (!arr) continue;
+        string name = arr->GetName() ? arr->GetName() : ("field" + std::to_string(i));
+        int nComp = arr->GetNumberOfComponents();
+        vtkIdType nTuples = arr->GetNumberOfTuples();
+        vector<float> data(nTuples * nComp);
+        for (vtkIdType t = 0; t < nTuples; ++t) {
+            for (int c = 0; c < nComp; ++c) {
+                data[t * nComp + c] = static_cast<float>(arr->GetComponent(t, c));
+            }
+        }
+        scalar_data[name] = std::move(data);
+    }
+    
+    return true;
+}
+
 // 高级 UVF 生成主流程
 bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     if (!poly) return false;

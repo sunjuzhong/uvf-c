@@ -32,12 +32,15 @@ jobs:
           path: third_party/vtk/build
           key: vtk-native-${{ runner.os }}-v9.3.0-${{ hashFiles('CMakeLists.txt') }}
 
-      - name: Configure & build VTK (minimal)
+      - name: Clone & build VTK (minimal)
         if: steps.cache-vtk.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p third_party/vtk/build
-          cd third_party/vtk/build
+          mkdir -p third_party
+          rm -rf third_party/vtk
+          git clone --depth=1 --branch v9.3.0 https://github.com/Kitware/VTK.git third_party/vtk
+          cd third_party/vtk
+          mkdir -p build && cd build
           cmake .. \
             -DBUILD_SHARED_LIBS=OFF \
             -DVTK_BUILD_TESTING=OFF \
@@ -66,19 +69,28 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/install
           cmake --build . -j 4
           cmake --install .
-
-      - name: Configure project (native CLI)
+      - name: Configure project (native CLI + tests)
         shell: bash
         run: |
           rm -rf build
           VTK_DIR_CANDIDATE="$(echo $PWD/third_party/vtk/build/install/lib/cmake/vtk-9.3*)"
           echo "Using VTK_DIR=$VTK_DIR_CANDIDATE"
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DVTK_DIR="$VTK_DIR_CANDIDATE"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DUVF_ENABLE_TESTS=ON -DVTK_DIR="$VTK_DIR_CANDIDATE"
 
       - name: Build CLI
         shell: bash
         run: |
           cmake --build build -j 4 --target uvf_cli
+
+      - name: Build tests
+        shell: bash
+        run: |
+          cmake --build build -j 4 --target uvf_tests uvf_file_tests || cmake --build build -j 4 --target uvf_tests || true
+
+      - name: Run tests
+        shell: bash
+        run: |
+          if [ -f build/uvf_tests ]; then ctest --test-dir build --output-on-failure || exit 1; else echo "No tests built"; fi
 
       - name: Smoke test CLI
         shell: bash

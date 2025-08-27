@@ -10,7 +10,7 @@ EMSDK=""
 VTK_SRC=""
 BUILD_TYPE="Release"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-VTK_VERSION="v9.4.2"
+VTK_VERSION="v9.3.0"
 FULL_VTK=0
 
 while [[ $# -gt 0 ]]; do

@@ -46,16 +46,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/vtk/build-wasm
-          key: vtk-wasm-${{ runner.os }}-v9.3.0-${{ hashFiles('CMakeLists.txt') }}
+          key: vtk-wasm-${{ runner.os }}-v9.3.0-emscripten-4.0.13-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Prepare VTK (clone minimal)
         if: steps.cache-vtk.outputs.cache-hit != 'true'
         run: |
           source emsdk/emsdk_env.sh
           mkdir -p third_party
-          if [ ! -d third_party/vtk ]; then
-            git clone --depth=1 --branch v9.3.0 https://github.com/Kitware/VTK.git third_party/vtk
-          fi
+          # Clean any existing VTK directory to avoid conflicts
+          rm -rf third_party/vtk
+          git clone --depth=1 --branch v9.3.0 https://github.com/Kitware/VTK.git third_party/vtk
           cd third_party/vtk
           mkdir -p build-wasm && cd build-wasm
           emcmake cmake .. \
@@ -85,13 +85,17 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
             -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO \
             -DVTK_MODULE_ENABLE_VTK_IOCellGrid=NO \
-            -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO
+            -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install
           cmake --build . -j 4
+          cmake --install .
 
       - name: Configure project (wasm)
         run: |
           source emsdk/emsdk_env.sh
-          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/lib/cmake/vtk-9.3 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
+          # Clean any existing build directory to avoid conflicts
+          rm -rf build-wasm
+          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/install/lib/cmake/vtk-9.3 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
         shell: bash
 
       - name: Build project (wasm)

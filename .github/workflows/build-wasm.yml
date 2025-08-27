@@ -25,15 +25,15 @@ jobs:
               emsdk
               ~/.emscripten_cache
               ~/.emscripten_ports
-            key: emsdk-${{ runner.os }}-3.1.64
+            key: emsdk-${{ runner.os }}-4.0.13
 
       - name: Setup emsdk
         if: steps.cache-emsdk.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/emscripten-core/emsdk.git emsdk
           cd emsdk
-          ./emsdk install 3.1.64
-          ./emsdk activate 3.1.64
+          ./emsdk install 4.0.13
+          ./emsdk activate 4.0.13
 
       - name: Activate emsdk env
         run: |

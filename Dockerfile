@@ -1,7 +1,7 @@
 ###########################
 # Stage 1: Build minimal VTK for wasm
 ###########################
-FROM emscripten/emsdk:3.1.64 AS vtk
+FROM emscripten/emsdk:4.0.13 AS vtk
 ARG VTK_TAG=v9.3.0
 ARG VTK_PARALLEL_JOBS
 # VTK_PARALLEL_JOBS: optional override; fallback to nproc at build time
@@ -42,7 +42,7 @@ RUN : "${VTK_PARALLEL_JOBS:=$(nproc)}" && echo "[info] Building VTK with ${VTK_P
 ###########################
 # Stage 2: Build project (wasm only artifacts)
 ###########################
-FROM emscripten/emsdk:3.1.64 AS build
+FROM emscripten/emsdk:4.0.13 AS build
 ARG BUILD_TYPE=Release
 ARG PARALLEL_JOBS
 ENV BUILD_TYPE=${BUILD_TYPE} PARALLEL_JOBS=${PARALLEL_JOBS}

@@ -23,6 +23,7 @@ uvf.js
 .idea/
 *.code-workspace
 
+tmp
 # OS files
 .DS_Store
 

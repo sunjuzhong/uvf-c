@@ -222,12 +222,28 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
         sections_ss << "\"offset\":"<<kv.second.offset<<"}";
     }
     sections_ss << "]";
-    string container_id = name + "_geom"; // stable id without forcing slice suffix
+    
+    // Map geom_kind to valid second layer ID
+    string second_layer_id;
+    if (geom_kind == "slice") {
+        second_layer_id = "slices";
+    } else if (geom_kind == "isosurface") {
+        second_layer_id = "isosurfaces";
+    } else if (geom_kind == "streamline") {
+        second_layer_id = "streamlines";
+    } else {
+        second_layer_id = "surfaces"; // default for "surface" and any other cases
+    }
+    
     std::ostringstream manifest_ss;
     manifest_ss << "[";
-    manifest_ss << "{\"attributions\":{\"members\":[\""<<container_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
-    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<container_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
-    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<container_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
+    // First layer: root_group (GeometryGroup)
+    manifest_ss << "{\"attributions\":{\"members\":[\""<<second_layer_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
+    // Second layer: surfaces/slices/isosurfaces/streamlines (SolidGeometry)
+    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    // Third layer: Face (unchanged)
+    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
+    
     manifest_path = output_dir + "/manifest.json";
     std::ofstream ofs(manifest_path);
     if (!ofs) return false;

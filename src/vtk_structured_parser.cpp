@@ -123,6 +123,11 @@ public:
                 streamlines_group.data_names.push_back(name);
                 streamlines_group.poly_data[name] = extract_field_geometry(poly, name);
             }
+            else {
+                // All other fields (including pressure-related) go to surfaces group
+                surfaces_group.data_names.push_back(name);
+                surfaces_group.poly_data[name] = extract_field_geometry(poly, name);
+            }
         }
         
         // Only add groups that have data
@@ -131,9 +136,9 @@ public:
         if (!isosurfaces_group.data_names.empty()) groups.push_back(isosurfaces_group);
         if (!streamlines_group.data_names.empty()) groups.push_back(streamlines_group);
         
-        // If no specific patterns found, create a default group
+        // If no field-based groups found, create a default surfaces group
         if (groups.empty()) {
-            DataGroup default_group = {"default", "surfaces", {"main"}, {}};
+            DataGroup default_group = {"surfaces", "surfaces", {"main"}, {}};  // Use "surfaces" instead of "default"
             default_group.poly_data["main"] = poly;
             groups.push_back(default_group);
         }
@@ -255,7 +260,7 @@ private:
         ss << "\"attributions\":{";
         ss << "\"edges\":[],";
         ss << "\"vertices\":[],";
-        ss << "\"faces\":[\"" << data_name << "\"]";
+        ss << "\"faces\":[\"" << data_name << "_face\"]";  // Update face reference
         ss << "}";
         
         // Resources - binary data reference
@@ -296,7 +301,7 @@ private:
     ) {
         std::ostringstream ss;
         ss << "{";
-        ss << "\"id\":\"" << data_name << "\",";
+        ss << "\"id\":\"" << data_name << "_face\",";  // Fix ID conflict by adding suffix
         ss << "\"type\":\"Face\",";
         ss << "\"properties\":{";
         ss << "\"alpha\":1.0,";
@@ -320,7 +325,7 @@ private:
         
         ss << "},";
         ss << "\"attributions\":{";
-        ss << "\"packedParentId\":\"" << data_name << "_SolidGeometry\"";
+        ss << "\"packedParentId\":\"" << data_name << "\"";  // Fix reference to correct SolidGeometry ID
         ss << "}";
         ss << "}";
         return ss.str();

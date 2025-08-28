@@ -1,4 +1,5 @@
 
+#include "vtk_structured_parser.h"
 #include <vtkSmartPointer.h>
 #include <vtkXMLPolyDataReader.h>
 #include <vtkPolyDataReader.h>
@@ -238,15 +239,6 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
 // Backwards compatibility wrapper (defaults to surface)
 bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path) {
     return create_manifest(vertices, indices, scalar_data, offsets, bin_path, name, output_dir, manifest_path, "surface");
-}
-
-// 递归创建目录
-inline void make_dirs(const std::string& path) {
-#ifdef _WIN32
-    _mkdir(path.c_str());
-#else
-    mkdir(path.c_str(), 0777);
-#endif
 }
 
 // Extract geometry data helper function (for structured parser)

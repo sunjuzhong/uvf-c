@@ -61,15 +61,6 @@ struct UVFGeometry {
     vector<string> faces;   // for SolidGeometry
 };
 
-// Recursive directory creation
-inline void make_dirs(const std::string& path) {
-#ifdef _WIN32
-    _mkdir(path.c_str());
-#else
-    mkdir(path.c_str(), 0777);
-#endif
-}
-
 // Enhanced VTK data classifier
 class VTKDataClassifier {
 public:

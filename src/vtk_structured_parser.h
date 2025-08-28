@@ -6,6 +6,12 @@
 #include <string>
 #include <map>
 
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
+
 using std::vector;
 using std::string;
 using std::map;
@@ -35,7 +41,13 @@ bool extract_geometry_data(
 );
 
 // Directory creation helper
-void make_dirs(const std::string& path);
+inline void make_dirs(const std::string& path) {
+#ifdef _WIN32
+    _mkdir(path.c_str());
+#else
+    mkdir(path.c_str(), 0777);
+#endif
+}
 
 // Binary data writing function (from existing code)
 bool write_binary_data(

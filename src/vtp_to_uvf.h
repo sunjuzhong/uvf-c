@@ -9,6 +9,16 @@ using std::vector;
 using std::string;
 using std::map;
 
+// DataArray information structure
+struct DataArrayInfo {
+    string name;        // Array name
+    int components;     // Number of components
+    size_t tuples;      // Number of tuples
+    float rangeMin;     // Minimum value
+    float rangeMax;     // Maximum value
+    string dType;       // Data type
+};
+
 // UVF offset structure for binary data
 struct UVFOffsets {
     struct Info {
@@ -25,6 +35,9 @@ vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* path);
 
 // Generate basic UVF format
 bool generate_uvf(vtkPolyData* poly, const char* uvf_dir);
+
+// Generate UVF format with DataArray information (enhanced version)
+bool generate_uvf(vtkPolyData* poly, const char* uvf_dir, vector<DataArrayInfo>* array_info);
 
 // Extract geometry data from vtkPolyData
 bool extract_geometry_data(

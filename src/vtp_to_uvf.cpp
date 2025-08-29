@@ -1,4 +1,5 @@
 
+#include "vtp_to_uvf.h"
 #include "vtk_structured_parser.h"
 #include <vtkSmartPointer.h>
 #include <vtkXMLPolyDataReader.h>
@@ -18,22 +19,13 @@
 #include <algorithm>
 #include <sstream>
 #include <cmath>
+#include <limits>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 using std::vector;
 using std::string;
 using std::map;
-
-struct UVFOffsets {
-    struct Info {
-        size_t offset;
-        size_t length;
-        string dType;
-        int dimension;
-    };
-    map<string, Info> fields;
-};
 
 // Detect extension helper
 static std::string file_ext_lower(const char* path){
@@ -219,7 +211,21 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
         sections_ss << "\"dimension\":"<<kv.second.dimension<<",";
         sections_ss << "\"length\":"<<kv.second.length<<",";
         sections_ss << "\"name\":\""<<kv.first<<"\",";
-        sections_ss << "\"offset\":"<<kv.second.offset<<"}";
+        sections_ss << "\"offset\":"<<kv.second.offset;
+        
+        // Add rangeMin and rangeMax for scalar data
+        if (kv.first != "indices" && kv.first != "position") {
+            auto scalar_it = scalar_data.find(kv.first);
+            if (scalar_it != scalar_data.end() && !scalar_it->second.empty()) {
+                const auto& data = scalar_it->second;
+                float minVal = *std::min_element(data.begin(), data.end());
+                float maxVal = *std::max_element(data.begin(), data.end());
+                sections_ss << ",\"rangeMin\":" << minVal;
+                sections_ss << ",\"rangeMax\":" << maxVal;
+            }
+        }
+        
+        sections_ss << "}";
     }
     sections_ss << "]";
     
@@ -241,8 +247,8 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
     manifest_ss << "{\"attributions\":{\"members\":[\""<<second_layer_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
     // Second layer: surfaces/slices/isosurfaces/streamlines (SolidGeometry)
     manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
-    // Third layer: Face (unchanged)
-    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< (indices.size()/3) <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
+    // Third layer: Face - endIndex should be the total number of indices, not triangles
+    manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< indices.size() <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
     
     manifest_path = output_dir + "/manifest.json";
     std::ofstream ofs(manifest_path);
@@ -317,6 +323,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     vector<uint32_t> indices;
     map<string, vector<float>> scalar_data;
     if(!poly->GetPoints()) return false;
+    
     // 提取数据
     auto pts = poly->GetPoints();
     vtkIdType nPts = pts->GetNumberOfPoints();
@@ -328,6 +335,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         vertices[i * 3 + 1] = static_cast<float>(p[1]);
         vertices[i * 3 + 2] = static_cast<float>(p[2]);
     }
+    
     auto polys = poly->GetPolys();
     auto idList = vtkSmartPointer<vtkIdList>::New();
     polys->InitTraversal();
@@ -339,6 +347,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
             indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
         }
     }
+    
     auto pd = poly->GetPointData();
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
         auto arr = pd->GetArray(i);
@@ -347,13 +356,17 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         int nComp = arr->GetNumberOfComponents();
         vtkIdType nTuples = arr->GetNumberOfTuples();
         vector<float> data(nTuples * nComp);
+        
         for (vtkIdType t = 0; t < nTuples; ++t) {
             for (int c = 0; c < nComp; ++c) {
-                data[t * nComp + c] = static_cast<float>(arr->GetComponent(t, c));
+                float val = static_cast<float>(arr->GetComponent(t, c));
+                data[t * nComp + c] = val;
             }
         }
+        
         scalar_data[name] = std::move(data);
     }
+    
     // 目录结构
     string out_dir = string(uvf_dir);
     string resources_dir = out_dir + "/resources/uvf";

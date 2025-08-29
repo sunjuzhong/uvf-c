@@ -1,53 +1,170 @@
-# uvf-c: VTP→UVF WASM 项目模板
+# UVF-C: VTK to UVF Converter
 
-## 依赖
-- VTK (C++)
+A high-performance C++ library for converting VTK/VTP files to Universal Volume Format (UVF) with support for both native and WebAssembly builds.
+
+## Features
+
+- **Multi-format Input**: Support for VTP (XML), VTK (legacy), and structured grids
+- **DataArray Metadata**: Extract comprehensive information about data arrays (ranges, types, components)
+- **Geometry Classification**: Automatic detection of geometry types (surface, slice, streamline)
+- **Cross-platform**: Native C++ and WebAssembly builds
+- **Comprehensive APIs**: Both C++ and C interfaces
+- **Robust Testing**: Full test suite with multiple test categories
+
+## Quick Start
+
+### Prerequisites
+- VTK (CommonCore, CommonDataModel, IOCore, IOXML modules)  
 - CMake >= 3.13
-- Emscripten (编译为 WASM)
+- C++17 compatible compiler
+- Emscripten (for WASM builds)
 
-## 构建（本地 C++）
-```sh
+### Building (Native C++)
+
+```bash
+git clone <repository>
+cd uvf-c
 mkdir build && cd build
 cmake ..
-make
+make -j$(nproc)
 ```
 
-## 构建（Emscripten WASM）
-```sh
+### Building (WebAssembly)
+
+```bash
+# Setup Emscripten
 source /path/to/emsdk/emsdk_env.sh
-mkdir build-wasm && cd build-wasm
-emcmake cmake ..
-cmake --build . -j
+
+# Build VTK for WASM (first time only)
+./scripts/bootstrap_wasm.sh
+
+# Build UVF-C for WASM  
+./scripts/build_wasm.sh
 ```
 
-生成的 `uvf.wasm` 和 `uvf.js` 可用于 Web 前端。
+## Usage
 
-## 前端 JS 调用示例
-```js
+### Command Line Interface
+```bash
+# Convert single file
+./uvf_cli input.vtp output_directory
+
+# Process directory of files
+./uvf_cli input_directory/ output_directory/ directory
+
+# Structured grid processing
+./uvf_cli input.vtk output_directory structured
+```
+
+### C++ API
+```cpp
+#include "src/vtp_to_uvf.h"
+
+// Basic conversion
+auto polydata = parse_vtp_file("input.vtp");
+generate_uvf(polydata, "output_directory");
+
+// With DataArray metadata extraction
+vector<DataArrayInfo> arrayInfo;
+generate_uvf(polydata, "output_directory", &arrayInfo);
+
+for (const auto& info : arrayInfo) {
+    std::cout << "Array: " << info.name 
+              << ", Range: [" << info.rangeMin << ", " << info.rangeMax << "]"
+              << std::endl;
+}
+```
+
+### JavaScript API (WebAssembly)
+```javascript
 import UVFModule from './uvf.js';
 
 UVFModule().then(Module => {
-  // 假设已通过 fetch/FS 等方式将 vtp 文件加载到虚拟文件系统
-  const vtpPath = '/input.vtp';
-  const uvfPath = '/output.uvf';
-  // 调用 WASM 导出的 C 接口
-  const ok = Module._generate_uvf(vtpPath, uvfPath);
-  if (ok) {
-    // 读取生成的 UVF 文件
-    const uvfData = Module.FS_readFile(uvfPath);
-    // ...处理 uvfData
-  }
+    // Load VTP file to virtual filesystem
+    Module.FS_createDataFile('/', 'input.vtp', vtpData, true, true);
+    
+    // Convert to UVF
+    const result = Module.ccall('generate_uvf', 'number', 
+        ['string', 'string'], ['/input.vtp', '/output']);
+    
+    if (result) {
+        // Read generated UVF files
+        const manifest = Module.FS_readFile('/output/manifest.json');
+        const binaryData = Module.FS_readFile('/output/resources/data.bin');
+    }
 });
 ```
 
-### 原生 vs WASM
-- 原生：生成 `libuvf.a` + `uvf_cli`
-- WASM：生成 `uvf.js` (glue) + `uvf.wasm`，通过 `UVFModule()` 异步加载
+## Testing
 
-### Demo 运行步骤
-1. 构建 wasm (见上)
-2. 将 `uvf.js` 与 `uvf.wasm` 放在 `index.html` 同目录
-3. 启动静态服务器（避免浏览器 file:// 限制）
+### Run All Tests
+```bash
+cd build
+make test
+```
+
+### Individual Test Suites
+```bash
+# Geometry classification tests
+./uvf_tests
+
+# File input format tests  
+./uvf_file_tests
+
+# DataArray metadata tests
+./uvf_data_array_tests
+```
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Project Overview](docs/PROJECT_OVERVIEW.md)**: Complete project documentation
+- **[API Reference](docs/api/)**: Detailed function and data structure documentation  
+- **[Examples](docs/examples/)**: Usage examples and tutorials
+- **[Testing Guide](docs/testing/)**: Testing guidelines and test structure
+- **[Development Guide](docs/development/)**: Architecture and development setup
+
+## Project Structure
+
+```
+uvf-c/
+├── src/                     # Source code
+│   ├── vtp_to_uvf.{h,cpp}  # Core conversion engine
+│   ├── uvf_c_api.{h,cpp}   # C API wrapper
+│   └── main.cpp            # CLI application
+├── tests/                   # Test suite
+│   ├── test_geom_kind.cpp  # Geometry classification tests
+│   ├── test_file_inputs.cpp # File format tests
+│   └── test_data_array_info.cpp # DataArray metadata tests
+├── docs/                    # Documentation
+├── scripts/                 # Build scripts
+├── assets/                  # Sample data files
+└── demo/                    # Web demo
+```
+
+## Build Targets
+
+### Native Builds
+- `libuvf.a`: Static library
+- `uvf_cli`: Command-line tool
+- `uvf_tests`, `uvf_file_tests`, `uvf_data_array_tests`: Test executables
+
+### WebAssembly Builds  
+- `uvf.js`: JavaScript glue code
+- `uvf.wasm`: WebAssembly binary
+
+## Contributing
+
+1. **Setup**: Follow the [development guide](docs/development/)
+2. **Tests**: Add tests for new features
+3. **Documentation**: Update relevant documentation
+4. **Code Style**: Use consistent formatting and English comments
+5. **Review**: Test both native and WASM builds
+
+## License
+
+[Add license information]
 ```sh
 python3 -m http.server 8080
 ```

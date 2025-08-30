@@ -75,7 +75,14 @@ jobs:
           echo "Architecture: $(uname -m)"
           echo "macOS version: $(sw_vers -productVersion || echo 'N/A')"
           echo "Xcode version: $(xcodebuild -version || echo 'N/A')"
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=ON -DUVF_ENABLE_TESTS=OFF -DVTK_DIR="$VTK_DIR_CANDIDATE" -DCMAKE_OSX_ARCHITECTURES=arm64
+          # Suppress noisy C23 prototype deprecation warnings from bundled zlib inside VTK
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUVF_BUILD_CLI=ON \
+            -DUVF_ENABLE_TESTS=OFF \
+            -DVTK_DIR="$VTK_DIR_CANDIDATE" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_FLAGS="-Wno-deprecated-non-prototype ${CMAKE_C_FLAGS}"
 
       - name: Build CLI
         shell: bash

@@ -22,6 +22,7 @@
 #include <limits>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <random>
 
 using std::vector;
 using std::string;
@@ -35,6 +36,16 @@ static std::string file_ext_lower(const char* path){
     std::string ext = s.substr(pos+1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     return ext;
+}
+
+// Generate a readable random token (avoid confusing chars 0,O,1,l)
+static std::string make_random_token(size_t len=8){
+    static const char charset[] = "abcdefghijkmnpqrstuvwxyz23456789"; // 32 chars
+    static thread_local std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<size_t> dist(0, sizeof(charset)-2);
+    std::string out; out.reserve(len);
+    for(size_t i=0;i<len;++i) out.push_back(charset[dist(gen)]);
+    return out;
 }
 
 // Simple wrapper to read either VTP (XML PolyData) or legacy VTK (PolyData or UnstructuredGrid) and return vtkPolyData
@@ -421,12 +432,15 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     string resources_dir = out_dir + "/";
     make_dirs(out_dir);
     make_dirs(resources_dir);
-    string bin_path = resources_dir + "/uvf.bin";
+    // generate random bin file name
+    std::string rand8 = make_random_token(8);
+    string bin_filename = rand8 + ".bin";
+    string bin_path = resources_dir + "/" + bin_filename;
     UVFOffsets offsets;
     if (!write_binary_data(vertices, indices, scalar_data, bin_path, offsets)) return false;
     string manifest_path;
     // Determine geometry kind from original polydata & data
     string geomKind = classify_geometry_kind(poly, vertices, indices, scalar_data, "uvf");
-    if (!create_manifest(vertices, indices, scalar_data, offsets, "uvf.bin", "uvf", out_dir, manifest_path, geomKind)) return false;
+    if (!create_manifest(vertices, indices, scalar_data, offsets, bin_filename, "uvf", out_dir, manifest_path, geomKind)) return false;
     return true;
 }

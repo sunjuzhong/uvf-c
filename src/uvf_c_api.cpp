@@ -187,6 +187,6 @@ int uvf_count_vtk_files(const char* dir_path) {
 
 // Get API version
 const char* uvf_get_version() {
-    return "0.1.1-structured-multi";
+    return "0.1.4";
 }
 }

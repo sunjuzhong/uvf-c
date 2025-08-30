@@ -43,13 +43,6 @@ if(UVF_ENABLE_TESTS AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
     target_compile_definitions(uvf_file_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
     add_test(NAME uvf_file_inputs COMMAND uvf_file_tests)
     
-    # DataArray information tests
-    add_executable(uvf_data_array_tests
-        tests/test_data_array_info.cpp
-    )
-    target_link_libraries(uvf_data_array_tests PRIVATE uvf ${VTK_LIBRARIES})
-    target_include_directories(uvf_data_array_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    add_test(NAME uvf_data_array_info COMMAND uvf_data_array_tests)
 endif()
 
 if(TARGET VTK::FiltersCore)

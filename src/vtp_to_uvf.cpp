@@ -112,6 +112,21 @@ bool read_vtp_data(const char* filename, vector<float>& vertices, vector<uint32_
             indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
         }
     }
+    // Fallback: if no polys produced indices and there are line cells, encode each segment as degenerate triangle (a,b,b)
+    if(indices.empty() && polydata->GetLines() && polydata->GetLines()->GetNumberOfCells()>0){
+        auto lines = polydata->GetLines();
+        lines->InitTraversal();
+        while(lines->GetNextCell(idList)){
+            if(idList->GetNumberOfIds()<2) continue;
+            for(vtkIdType j=0;j<idList->GetNumberOfIds()-1;++j){
+                uint32_t a = static_cast<uint32_t>(idList->GetId(j));
+                uint32_t b = static_cast<uint32_t>(idList->GetId(j+1));
+                indices.push_back(a);
+                indices.push_back(b);
+                indices.push_back(b); // degenerate triangle to preserve triplet structure
+            }
+        }
+    }
     // Scalar fields
     auto pd = polydata->GetPointData();
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
@@ -245,8 +260,12 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
     manifest_ss << "[";
     // First layer: root_group (GeometryGroup)
     manifest_ss << "{\"attributions\":{\"members\":[\""<<second_layer_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
-    // Second layer: surfaces/slices/isosurfaces/streamlines (SolidGeometry)
-    manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    // Second layer: adapt attributions for line (streamline) data: put name under edges instead of faces
+    if(geom_kind == "streamline") {
+        manifest_ss << "{\"attributions\":{\"edges\":[\""<<name<<"\"],\"faces\":[],\"vertices\":[]},\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    } else {
+        manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":[\""<<name<<"\"],\"vertices\":[]},\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+    }
     // Third layer: Face - endIndex should be the total number of indices, not triangles
     manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< indices.size() <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
     
@@ -293,6 +312,21 @@ bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vecto
             indices.push_back(static_cast<uint32_t>(idList->GetId(0)));
             indices.push_back(static_cast<uint32_t>(idList->GetId(j)));
             indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
+        }
+    }
+    // Fallback for pure line/polyline data
+    if(indices.empty() && polydata->GetLines() && polydata->GetLines()->GetNumberOfCells()>0){
+        auto lines = polydata->GetLines();
+        lines->InitTraversal();
+        while(lines->GetNextCell(idList)){
+            if(idList->GetNumberOfIds()<2) continue;
+            for(vtkIdType j=0;j<idList->GetNumberOfIds()-1;++j){
+                uint32_t a = static_cast<uint32_t>(idList->GetId(j));
+                uint32_t b = static_cast<uint32_t>(idList->GetId(j+1));
+                indices.push_back(a);
+                indices.push_back(b);
+                indices.push_back(b);
+            }
         }
     }
     
@@ -347,6 +381,21 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
             indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
         }
     }
+    // Fallback: lines only
+    if(indices.empty() && poly->GetLines() && poly->GetLines()->GetNumberOfCells()>0){
+        auto lines = poly->GetLines();
+        lines->InitTraversal();
+        while(lines->GetNextCell(idList)){
+            if(idList->GetNumberOfIds()<2) continue;
+            for(vtkIdType j=0;j<idList->GetNumberOfIds()-1;++j){
+                uint32_t a = static_cast<uint32_t>(idList->GetId(j));
+                uint32_t b = static_cast<uint32_t>(idList->GetId(j+1));
+                indices.push_back(a);
+                indices.push_back(b);
+                indices.push_back(b);
+            }
+        }
+    }
     
     auto pd = poly->GetPointData();
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
@@ -369,9 +418,8 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     
     // 目录结构
     string out_dir = string(uvf_dir);
-    string resources_dir = out_dir + "/resources/uvf";
+    string resources_dir = out_dir + "/";
     make_dirs(out_dir);
-    make_dirs(out_dir + "/resources");
     make_dirs(resources_dir);
     string bin_path = resources_dir + "/uvf.bin";
     UVFOffsets offsets;
@@ -379,6 +427,6 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     string manifest_path;
     // Determine geometry kind from original polydata & data
     string geomKind = classify_geometry_kind(poly, vertices, indices, scalar_data, "uvf");
-    if (!create_manifest(vertices, indices, scalar_data, offsets, "resources/uvf/uvf.bin", "uvf", out_dir, manifest_path, geomKind)) return false;
+    if (!create_manifest(vertices, indices, scalar_data, offsets, "uvf.bin", "uvf", out_dir, manifest_path, geomKind)) return false;
     return true;
 }

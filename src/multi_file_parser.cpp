@@ -33,7 +33,7 @@ bool generate_multi_file_uvf(
     }
     
     string out_dir = string(uvf_dir);
-    string resources_dir = out_dir + "/resources/uvf";
+    string resources_dir = out_dir + "/";
     
     // Create directory structure
     make_dirs(out_dir);
@@ -176,7 +176,7 @@ bool generate_multi_file_uvf(
             auto offset_it = all_offsets.find(label);
             if (offset_it != all_offsets.end()) {
                 manifest_ss << ",\"resources\":{\"buffers\":{";
-                manifest_ss << "\"path\":\"resources/uvf/" << label << ".bin\",";
+                manifest_ss << "\"path\":\"/" << label << ".bin\",";
                 manifest_ss << "\"sections\":[";
                 
                 bool first_section = true;

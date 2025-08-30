@@ -268,7 +268,7 @@ private:
         if (offset_it != all_offsets.end()) {
             ss << ",\"resources\":{";
             ss << "\"buffers\":{";
-            ss << "\"path\":\"resources/uvf/" << data_name << ".bin\",";
+            ss << "\"path\":\"/" << data_name << ".bin\",";
             ss << "\"sections\":[";
             
             bool first_section = true;
@@ -337,7 +337,7 @@ bool generate_structured_uvf(vtkPolyData* poly, const char* uvf_dir) {
     if (!poly) return false;
     
     string out_dir = string(uvf_dir);
-    string resources_dir = out_dir + "/resources/uvf";
+    string resources_dir = out_dir + "/";
     
     // Create directory structure
     make_dirs(out_dir);

@@ -23,6 +23,17 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <random>
+#include <vtkCellData.h>
+#include <vtkFieldData.h>
+#include <vtkAbstractArray.h>
+#include <vtkStringArray.h>
+
+// Face segmentation support (FaceIndex + FaceIdMapping)
+struct UVFFaceSegment {
+    std::string id;        // face id (mapped name or generated)
+    size_t startIndex = 0; // index into global indices array (uint32 element index, inclusive)
+    size_t endIndex = 0;   // exclusive end
+};
 
 using std::vector;
 using std::string;
@@ -288,6 +299,84 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
     return true;
 }
 
+// New manifest creator supporting multiple face segments
+static bool create_manifest_with_faces(const vector<float>& vertices,
+                                       const vector<uint32_t>& indices,
+                                       const map<string, vector<float>>& scalar_data,
+                                       const UVFOffsets& offsets,
+                                       const string& bin_path,
+                                       const string& baseName,
+                                       const string& output_dir,
+                                       string& manifest_path,
+                                       const string& geom_kind,
+                                       const vector<UVFFaceSegment>& faces) {
+    // Build sections JSON (same as original)
+    std::ostringstream sections_ss;
+    sections_ss << "[";
+    bool first=true;
+    for (const auto& kv : offsets.fields) {
+        if(!first) sections_ss << ","; first=false;
+        sections_ss << "{\"dType\":\""<<kv.second.dType<<"\",";
+        sections_ss << "\"dimension\":"<<kv.second.dimension<<",";
+        sections_ss << "\"length\":"<<kv.second.length<<",";
+        sections_ss << "\"name\":\""<<kv.first<<"\",";
+        sections_ss << "\"offset\":"<<kv.second.offset;
+        if (kv.first != "indices" && kv.first != "position") {
+            auto it = scalar_data.find(kv.first);
+            if(it!=scalar_data.end() && !it->second.empty()) {
+                float minV = *std::min_element(it->second.begin(), it->second.end());
+                float maxV = *std::max_element(it->second.begin(), it->second.end());
+                sections_ss << ",\"rangeMin\":"<<minV;
+                sections_ss << ",\"rangeMax\":"<<maxV;
+            }
+        }
+        sections_ss << "}";
+    }
+    sections_ss << "]";
+
+    // Determine second layer id same as original
+    string second_layer_id;
+    if (geom_kind == "slice") second_layer_id = "slices";
+    else if (geom_kind == "isosurface") second_layer_id = "isosurfaces";
+    else if (geom_kind == "streamline") second_layer_id = "streamlines"; // segmentation unlikely but keep path
+    else second_layer_id = "surfaces";
+
+    // Collect face ids for attributions (faces vs edges for streamline)
+    std::ostringstream manifest_ss;
+    manifest_ss << "[";
+    // root group
+    manifest_ss << "{\"attributions\":{\"members\":[\""<<second_layer_id<<"\"]},\"id\":\"root_group\",\"properties\":{\"transform\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"type\":0},\"type\":\"GeometryGroup\"},";
+
+    // Build faces list id array string for SolidGeometry attributions
+    std::ostringstream faceIdArray;
+    faceIdArray << "[";
+    for(size_t i=0;i<faces.size();++i){ if(i) faceIdArray << ","; faceIdArray << "\""<<faces[i].id<<"\""; }
+    faceIdArray << "]";
+
+    if (geom_kind == "streamline") {
+        // place ids under edges
+        manifest_ss << "{\"attributions\":{\"edges\":"<<faceIdArray.str()<<",\"faces\":[],\"vertices\":[]},";
+    } else {
+        manifest_ss << "{\"attributions\":{\"edges\":[],\"faces\":"<<faceIdArray.str()<<",\"vertices\":[]},";
+    }
+    manifest_ss << "\"id\":\""<<second_layer_id<<"\",\"properties\":{\"geomKind\":\""<<geom_kind<<"\"},\"resources\":{\"buffers\":{\"path\":\""<<bin_path<<"\",\"sections\":"<<sections_ss.str()<<",\"type\":\"buffers\"}},\"type\":\"SolidGeometry\"},";
+
+    // Each face segment
+    for(size_t i=0;i<faces.size();++i){
+        const auto& f = faces[i];
+        manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<f.id<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<<f.endIndex<<",\"startIndex\":"<<f.startIndex<<"}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}";
+        if(i+1<faces.size()) manifest_ss << ",";
+    }
+    manifest_ss << "]";
+
+    manifest_path = output_dir + "/manifest.json";
+    std::ofstream ofs(manifest_path);
+    if(!ofs) return false;
+    ofs << manifest_ss.str();
+    ofs.close();
+    return true;
+}
+
 // Backwards compatibility wrapper (defaults to surface)
 bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indices, const map<string, vector<float>>& scalar_data, const UVFOffsets& offsets, const string& bin_path, const string& name, const string& output_dir, string& manifest_path) {
     return create_manifest(vertices, indices, scalar_data, offsets, bin_path, name, output_dir, manifest_path, "surface");
@@ -381,16 +470,45 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         vertices[i * 3 + 2] = static_cast<float>(p[2]);
     }
     
+    // Face segmentation detection (CellData: FaceIndex; FieldData: FaceIdMapping)
+    vtkDataArray* faceIndexArr = poly->GetCellData() ? poly->GetCellData()->GetArray("FaceIndex") : nullptr; // could be vtkIntArray etc.
+    std::vector<std::string> faceNameMap;
+    if(poly->GetFieldData()){
+        for(int ai=0; ai<poly->GetFieldData()->GetNumberOfArrays(); ++ai){
+            vtkAbstractArray* arr = poly->GetFieldData()->GetAbstractArray(ai);
+            if(!arr || !arr->GetName()) continue;
+            if(std::string(arr->GetName())=="FaceIdMapping"){
+                if(auto sArr = vtkStringArray::SafeDownCast(arr)){
+                    for(vtkIdType v=0; v<sArr->GetNumberOfValues(); ++v){ faceNameMap.push_back(sArr->GetValue(v)); }
+                }
+                break; // stop after mapping array
+            }
+        }
+    }
+    std::map<int, std::vector<uint32_t>> faceIndexBuckets; // faceIdx -> local indices
+    bool useSegmentation = faceIndexArr != nullptr;
     auto polys = poly->GetPolys();
     auto idList = vtkSmartPointer<vtkIdList>::New();
     polys->InitTraversal();
+    vtkIdType cellId = 0;
     while (polys->GetNextCell(idList)) {
-        if (idList->GetNumberOfIds() < 3) continue;
-        for (vtkIdType j = 1; j < idList->GetNumberOfIds() - 1; ++j) {
-            indices.push_back(static_cast<uint32_t>(idList->GetId(0)));
-            indices.push_back(static_cast<uint32_t>(idList->GetId(j)));
-            indices.push_back(static_cast<uint32_t>(idList->GetId(j + 1)));
+        if (idList->GetNumberOfIds() < 3) { cellId++; continue; }
+        int fIdx = 0;
+        if(useSegmentation && cellId < faceIndexArr->GetNumberOfTuples()) {
+            fIdx = static_cast<int>(faceIndexArr->GetComponent(cellId,0));
         }
+        for (vtkIdType j = 1; j < idList->GetNumberOfIds() - 1; ++j) {
+            uint32_t a = static_cast<uint32_t>(idList->GetId(0));
+            uint32_t b = static_cast<uint32_t>(idList->GetId(j));
+            uint32_t c = static_cast<uint32_t>(idList->GetId(j + 1));
+            if(useSegmentation) {
+                auto& bucket = faceIndexBuckets[fIdx];
+                bucket.push_back(a); bucket.push_back(b); bucket.push_back(c);
+            } else {
+                indices.push_back(a); indices.push_back(b); indices.push_back(c);
+            }
+        }
+        cellId++;
     }
     // Fallback: lines only
     if(indices.empty() && poly->GetLines() && poly->GetLines()->GetNumberOfCells()>0){
@@ -406,6 +524,30 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
                 indices.push_back(b);
             }
         }
+    }
+
+    // If segmentation present, flatten buckets into indices and build segment metadata
+    std::vector<UVFFaceSegment> segments;
+    if(useSegmentation && !faceIndexBuckets.empty()){
+        indices.clear();
+        indices.reserve([&](){ size_t total=0; for(auto& kv: faceIndexBuckets) total += kv.second.size(); return total; }());
+        std::vector<int> sortedKeys; sortedKeys.reserve(faceIndexBuckets.size());
+        for(auto& kv: faceIndexBuckets) sortedKeys.push_back(kv.first);
+        std::sort(sortedKeys.begin(), sortedKeys.end());
+        size_t cursor = 0;
+        for(int key : sortedKeys){
+            auto& vec = faceIndexBuckets[key];
+            if(vec.empty()) continue;
+            size_t start = cursor;
+            indices.insert(indices.end(), vec.begin(), vec.end());
+            cursor += vec.size();
+            size_t end = cursor;
+            UVFFaceSegment seg;
+            if(key >=0 && key < static_cast<int>(faceNameMap.size()) && !faceNameMap[key].empty()) seg.id = faceNameMap[key];
+            else { std::ostringstream oss; oss << "uvf_Face" << key; seg.id = oss.str(); }
+            seg.startIndex = start; seg.endIndex = end; segments.push_back(std::move(seg));
+        }
+        if(segments.empty()) useSegmentation = false; // fallback
     }
     
     auto pd = poly->GetPointData();
@@ -441,6 +583,10 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     string manifest_path;
     // Determine geometry kind from original polydata & data
     string geomKind = classify_geometry_kind(poly, vertices, indices, scalar_data, "uvf");
-    if (!create_manifest(vertices, indices, scalar_data, offsets, bin_filename, "uvf", out_dir, manifest_path, geomKind)) return false;
+    if(useSegmentation && !segments.empty()) {
+        if(!create_manifest_with_faces(vertices, indices, scalar_data, offsets, bin_filename, "uvf", out_dir, manifest_path, geomKind, segments)) return false;
+    } else {
+        if (!create_manifest(vertices, indices, scalar_data, offsets, bin_filename, "uvf", out_dir, manifest_path, geomKind)) return false;
+    }
     return true;
 }

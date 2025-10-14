@@ -159,17 +159,19 @@ bool generate_multi_file_uvf(
         // 3. SolidGeometry for each file in the group
         for (const auto& file_info : group.second) {
             const string& label = file_info.second;
+            string geometry_id = generate_geometry_id(label);
+            string face_id = generate_face_id(label);
             
             if (!first) manifest_ss << ",";
             first = false;
             manifest_ss << "{";
-            manifest_ss << "\"id\":\"" << label << "\",";
+            manifest_ss << "\"id\":\"" << geometry_id << "\",";
             manifest_ss << "\"type\":\"SolidGeometry\",";
             manifest_ss << "\"properties\":{},";
             manifest_ss << "\"attributions\":{";
             manifest_ss << "\"edges\":[],";
             manifest_ss << "\"vertices\":[],";
-            manifest_ss << "\"faces\":[\"" << label << "\"]";
+            manifest_ss << "\"faces\":[\"" << face_id << "\"]";
             manifest_ss << "}";
             
             // Resources
@@ -201,7 +203,7 @@ bool generate_multi_file_uvf(
             if (!first) manifest_ss << ",";
             first = false;
             manifest_ss << "{";
-            manifest_ss << "\"id\":\"" << label << "\",";
+            manifest_ss << "\"id\":\"" << face_id << "\",";
             manifest_ss << "\"type\":\"Face\",";
             manifest_ss << "\"properties\":{";
             manifest_ss << "\"alpha\":1.0,";
@@ -222,7 +224,7 @@ bool generate_multi_file_uvf(
             }
             
             manifest_ss << "},";
-            manifest_ss << "\"attributions\":{\"packedParentId\":\"" << label << "\"}";
+            manifest_ss << "\"attributions\":{\"packedParentId\":\"" << geometry_id << "\"}";
             manifest_ss << "}";
         }
     }

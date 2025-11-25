@@ -89,7 +89,7 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
             -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
             -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_RenderingCore=NO \
+            -DVTK_MODULE_ENABLE_VTK_RenderingCore=YES \
             -DVTK_MODULE_ENABLE_VTK_IOCellGrid=NO \
             -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO \
             -DCMAKE_INSTALL_PREFIX=$PWD/install

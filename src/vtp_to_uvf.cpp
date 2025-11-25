@@ -1,6 +1,7 @@
 
 #include "vtp_to_uvf.h"
 #include "vtk_structured_parser.h"
+#include "stl_parser.h"
 #include <vtkSmartPointer.h>
 #include <vtkXMLPolyDataReader.h>
 #include <vtkPolyDataReader.h>
@@ -43,7 +44,7 @@ using std::map;
 static std::string file_ext_lower(const char* path){
     std::string s(path?path:"");
     auto pos = s.find_last_of('.');
-    if(pos==std::string::npos) return ""; 
+    if(pos==std::string::npos) return "";
     std::string ext = s.substr(pos+1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     return ext;
@@ -59,12 +60,15 @@ static std::string make_random_token(size_t len=8){
     return out;
 }
 
-// Simple wrapper to read either VTP (XML PolyData) or legacy VTK (PolyData or UnstructuredGrid) and return vtkPolyData
+// Simple wrapper to read VTP, VTK, or STL files and return vtkPolyData
 vtkSmartPointer<vtkPolyData> parse_vtp_file(const char* path) {
     if(!path) return nullptr;
     std::string ext = file_ext_lower(path);
     vtkSmartPointer<vtkPolyData> output;
-    if(ext == "vtp") {
+    if(ext == "stl") {
+        // Use STL parser for .stl files
+        output = parse_stl_file(path);
+    } else if(ext == "vtp") {
         auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
         reader->SetFileName(path);
         if(!reader->CanReadFile(path)) return nullptr;
@@ -249,7 +253,7 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
         sections_ss << "\"length\":"<<kv.second.length<<",";
         sections_ss << "\"name\":\""<<kv.first<<"\",";
         sections_ss << "\"offset\":"<<kv.second.offset;
-        
+
         // Add rangeMin and rangeMax for scalar data
         if (kv.first != "indices" && kv.first != "position") {
             auto scalar_it = scalar_data.find(kv.first);
@@ -261,11 +265,11 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
                 sections_ss << ",\"rangeMax\":" << maxVal;
             }
         }
-        
+
         sections_ss << "}";
     }
     sections_ss << "]";
-    
+
     // Map geom_kind to valid second layer ID
     string second_layer_id;
     if (geom_kind == "slice") {
@@ -277,7 +281,7 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
     } else {
         second_layer_id = "surfaces"; // default for "surface" and any other cases
     }
-    
+
     std::ostringstream manifest_ss;
     manifest_ss << "[";
     // First layer: root_group (GeometryGroup)
@@ -290,7 +294,7 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
     }
     // Third layer: Face - endIndex should be the total number of indices, not triangles
     manifest_ss << "{\"attributions\":{\"packedParentId\":\""<<second_layer_id<<"\"},\"id\":\""<<name<<"\",\"properties\":{\"alpha\":1,\"bufferLocations\":{\"indices\":[{\"bufNum\":0,\"endIndex\":"<< indices.size() <<",\"startIndex\":0}]},\"color\":16777215,\"geomKind\":\""<<geom_kind<<"\"},\"type\":\"Face\"}]";
-    
+
     manifest_path = output_dir + "/manifest.json";
     std::ofstream ofs(manifest_path);
     if (!ofs) return false;
@@ -385,11 +389,11 @@ bool create_manifest(const vector<float>& vertices, const vector<uint32_t>& indi
 // Extract geometry data helper function (for structured parser)
 bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vector<uint32_t>& indices, map<string, vector<float>>& scalar_data) {
     if (!polydata || !polydata->GetPoints()) return false;
-    
+
     vertices.clear();
     indices.clear();
     scalar_data.clear();
-    
+
     // Extract vertices
     auto pts = polydata->GetPoints();
     vtkIdType nPts = pts->GetNumberOfPoints();
@@ -401,7 +405,7 @@ bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vecto
         vertices[i * 3 + 1] = static_cast<float>(p[1]);
         vertices[i * 3 + 2] = static_cast<float>(p[2]);
     }
-    
+
     // Triangulate polys
     auto polys = polydata->GetPolys();
     auto idList = vtkSmartPointer<vtkIdList>::New();
@@ -429,7 +433,7 @@ bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vecto
             }
         }
     }
-    
+
     // Extract scalar fields
     auto pd = polydata->GetPointData();
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
@@ -446,7 +450,7 @@ bool extract_geometry_data(vtkPolyData* polydata, vector<float>& vertices, vecto
         }
         scalar_data[name] = std::move(data);
     }
-    
+
     return true;
 }
 
@@ -457,7 +461,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
     vector<uint32_t> indices;
     map<string, vector<float>> scalar_data;
     if(!poly->GetPoints()) return false;
-    
+
     // 提取数据
     auto pts = poly->GetPoints();
     vtkIdType nPts = pts->GetNumberOfPoints();
@@ -469,7 +473,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         vertices[i * 3 + 1] = static_cast<float>(p[1]);
         vertices[i * 3 + 2] = static_cast<float>(p[2]);
     }
-    
+
     // Face segmentation detection (CellData: FaceIndex; FieldData: FaceIdMapping)
     vtkDataArray* faceIndexArr = poly->GetCellData() ? poly->GetCellData()->GetArray("FaceIndex") : nullptr; // could be vtkIntArray etc.
     std::vector<std::string> faceNameMap;
@@ -549,7 +553,7 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         }
         if(segments.empty()) useSegmentation = false; // fallback
     }
-    
+
     auto pd = poly->GetPointData();
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
         auto arr = pd->GetArray(i);
@@ -558,17 +562,17 @@ bool generate_uvf(vtkPolyData* poly, const char* uvf_dir) {
         int nComp = arr->GetNumberOfComponents();
         vtkIdType nTuples = arr->GetNumberOfTuples();
         vector<float> data(nTuples * nComp);
-        
+
         for (vtkIdType t = 0; t < nTuples; ++t) {
             for (int c = 0; c < nComp; ++c) {
                 float val = static_cast<float>(arr->GetComponent(t, c));
                 data[t * nComp + c] = val;
             }
         }
-        
+
         scalar_data[name] = std::move(data);
     }
-    
+
     // 目录结构
     string out_dir = string(uvf_dir);
     string resources_dir = out_dir + "/";

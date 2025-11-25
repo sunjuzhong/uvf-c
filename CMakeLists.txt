@@ -15,6 +15,7 @@ find_package(VTK REQUIRED COMPONENTS
     CommonDataModel
     IOXML
     IOLegacy
+    IOGeometry
     FiltersGeometry
 )
 
@@ -25,7 +26,7 @@ endif()
 # Tests
 if(UVF_ENABLE_TESTS AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
     enable_testing()
-    
+
     # Geometry kind tests
     add_executable(uvf_tests
         tests/test_geom_kind.cpp
@@ -42,7 +43,7 @@ if(UVF_ENABLE_TESTS AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
     target_include_directories(uvf_file_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(uvf_file_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
     add_test(NAME uvf_file_inputs COMMAND uvf_file_tests)
-    
+
 endif()
 
 if(TARGET VTK::FiltersCore)
@@ -61,6 +62,7 @@ if("${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
         src/multi_file_parser.cpp
         src/id_utils.cpp
         src/uvf_c_api.cpp
+        src/stl_parser.cpp
     )
     # Provide third_party/nlohmann if exists
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)
@@ -80,14 +82,16 @@ else()
         src/multi_file_parser.cpp
         src/id_utils.cpp
         src/uvf_c_api.cpp
+        src/stl_parser.cpp
     )
     if(UVF_BUILD_CLI)
-        add_executable(uvf_cli 
-            src/main.cpp 
+        add_executable(uvf_cli
+            src/main.cpp
             src/vtp_to_uvf.cpp
             src/vtk_structured_parser.cpp
             src/multi_file_parser.cpp
             src/id_utils.cpp
+            src/stl_parser.cpp
         )
         # Provide third_party/nlohmann if exists
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include)

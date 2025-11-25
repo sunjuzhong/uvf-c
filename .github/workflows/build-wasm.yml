@@ -77,6 +77,9 @@ jobs:
             -DVTK_GROUP_ENABLE_Views=NO \
             -DVTK_USE_MPI=OFF \
             -DVTK_MODULE_ENABLE_VTK_IOGeometry=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersHybrid=YES \
+            -DVTK_MODULE_ENABLE_VTK_ImagingSources=YES \
+            -DVTK_MODULE_ENABLE_VTK_ImagingCore=YES \
             -DVTK_MODULE_ENABLE_VTK_CommonCore=YES \
             -DVTK_MODULE_ENABLE_VTK_CommonDataModel=YES \
             -DVTK_MODULE_ENABLE_VTK_CommonExecutionModel=YES \

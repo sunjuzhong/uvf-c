@@ -14,7 +14,7 @@ A high-performance C++ library for converting VTK/VTP files to Universal Volume 
 ## Quick Start
 
 ### Prerequisites
-- VTK (CommonCore, CommonDataModel, IOCore, IOXML modules)  
+- VTK (CommonCore, CommonDataModel, IOCore, IOXML modules)
 - CMake >= 3.13
 - C++17 compatible compiler
 - Emscripten (for WASM builds)
@@ -31,6 +31,22 @@ make -j$(nproc)
 
 ### Building (WebAssembly)
 
+**快速开始** (推荐):
+```bash
+# 激活 emsdk 环境
+source ~/emsdk/emsdk_env.sh
+
+# 一键构建并启动开发服务器
+./scripts/dev-wasm.sh --serve
+```
+
+首次构建需编译 VTK 依赖（约 20-40 分钟），后续构建仅需 1-2 分钟。
+
+📖 **详细指南**: [本地 WASM 开发文档](docs/wasm/LOCAL_DEVELOPMENT.md)
+
+<details>
+<summary>手动构建步骤</summary>
+
 ```bash
 # Setup Emscripten
 source /path/to/emsdk/emsdk_env.sh
@@ -38,9 +54,10 @@ source /path/to/emsdk/emsdk_env.sh
 # Build VTK for WASM (first time only)
 ./scripts/bootstrap_wasm.sh
 
-# Build UVF-C for WASM  
+# Build UVF-C for WASM
 ./scripts/build_wasm.sh
 ```
+</details>
 
 ## Usage
 
@@ -69,7 +86,7 @@ vector<DataArrayInfo> arrayInfo;
 generate_uvf(polydata, "output_directory", &arrayInfo);
 
 for (const auto& info : arrayInfo) {
-    std::cout << "Array: " << info.name 
+    std::cout << "Array: " << info.name
               << ", Range: [" << info.rangeMin << ", " << info.rangeMax << "]"
               << std::endl;
 }
@@ -82,11 +99,11 @@ import UVFModule from './uvf.js';
 UVFModule().then(Module => {
     // Load VTP file to virtual filesystem
     Module.FS_createDataFile('/', 'input.vtp', vtpData, true, true);
-    
+
     // Convert to UVF
-    const result = Module.ccall('generate_uvf', 'number', 
+    const result = Module.ccall('generate_uvf', 'number',
         ['string', 'string'], ['/input.vtp', '/output']);
-    
+
     if (result) {
         // Read generated UVF files
         const manifest = Module.FS_readFile('/output/manifest.json');
@@ -108,7 +125,7 @@ make test
 # Geometry classification tests
 ./uvf_tests
 
-# File input format tests  
+# File input format tests
 ./uvf_file_tests
 
 # DataArray metadata tests
@@ -120,7 +137,7 @@ make test
 Comprehensive documentation is available in the `docs/` directory:
 
 - **[Project Overview](docs/PROJECT_OVERVIEW.md)**: Complete project documentation
-- **[API Reference](docs/api/)**: Detailed function and data structure documentation  
+- **[API Reference](docs/api/)**: Detailed function and data structure documentation
 - **[Examples](docs/examples/)**: Usage examples and tutorials
 - **[Testing Guide](docs/testing/)**: Testing guidelines and test structure
 - **[Development Guide](docs/development/)**: Architecture and development setup
@@ -150,7 +167,7 @@ uvf-c/
 - `uvf_cli`: Command-line tool
 - `uvf_tests`, `uvf_file_tests`, `uvf_data_array_tests`: Test executables
 
-### WebAssembly Builds  
+### WebAssembly Builds
 - `uvf.js`: JavaScript glue code
 - `uvf.wasm`: WebAssembly binary
 

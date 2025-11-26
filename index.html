@@ -1,38 +1,207 @@
 <!DOCTYPE html>
 <html lang="zh-cn">
-<head>
-  <meta charset="UTF-8">
-  <title>VTP → UVF Web Demo</title>
-</head>
-<body>
-  <h1>VTP → UVF Web Demo</h1>
-  <input type="file" id="vtpFile" accept=".vtp">
-  <button id="convertBtn">转换为 UVF</button>
-  <a id="downloadLink" style="display:none">下载 UVF</a>
-  <script type="module">
-    import UVFModule from './uvf.js';
-    let Module;
-    UVFModule().then(m => { Module = m; });
-    document.getElementById('convertBtn').onclick = async () => {
-      const fileInput = document.getElementById('vtpFile');
-      if (!fileInput.files.length) return alert('请选择 VTP 文件');
-      const file = fileInput.files[0];
-      const arrayBuffer = await file.arrayBuffer();
-      Module.FS_createDataFile('/', 'input.vtp', new Uint8Array(arrayBuffer), true, true);
-      const ok = Module._generate_uvf('/input.vtp', '/output.uvf');
-      if (ok) {
-        const uvfData = Module.FS_readFile('/output.uvf');
-        const blob = new Blob([uvfData], {type: 'application/octet-stream'});
-        const url = URL.createObjectURL(blob);
-        const link = document.getElementById('downloadLink');
-        link.href = url;
-        link.download = 'output.uvf';
-        link.style.display = '';
-        link.textContent = '下载 UVF';
-      } else {
-        alert('转换失败');
+  <head>
+    <meta charset="UTF-8" />
+    <title>VTK/VTP/STL → UVF Web Demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
       }
-    };
-  </script>
-</body>
+      h1 {
+        color: #333;
+      }
+      .file-list {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f5f5f5;
+        border-radius: 8px;
+      }
+      .file-list h3 {
+        margin-top: 0;
+        color: #555;
+      }
+      .file-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #ddd;
+      }
+      .file-item:last-child {
+        border-bottom: none;
+      }
+      .file-name {
+        flex: 1;
+        font-family: monospace;
+      }
+      .file-size {
+        color: #888;
+        margin-right: 15px;
+      }
+      .download-btn {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .download-btn:hover {
+        background: #45a049;
+      }
+      #convertBtn {
+        background: #2196f3;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      #convertBtn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      #convertBtn:hover:not(:disabled) {
+        background: #1976d2;
+      }
+      #inputFile {
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>VTK/VTP/STL → UVF Web Demo</h1>
+    <p>支持格式: .vtp, .vtk, .stl</p>
+    <input type="file" id="inputFile" accept=".vtp,.vtk,.stl" />
+    <button id="convertBtn" disabled>加载中...</button>
+    <div id="outputFiles" class="file-list" style="display: none">
+      <h3>转换结果</h3>
+      <div id="fileListContent"></div>
+    </div>
+    <script src="./uvf.js"></script>
+    <script>
+      let Module;
+      // UVFModule 是全局变量（由 uvf.js 定义）
+      UVFModule().then((m) => {
+        Module = m;
+        document.getElementById('convertBtn').disabled = false;
+        document.getElementById('convertBtn').textContent = '转换为 UVF';
+        console.log('UVF Module loaded');
+      });
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+      }
+
+      function createDownloadLink(data, filename, mimeType) {
+        const blob = new Blob([data], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.className = 'download-btn';
+        a.textContent = '下载';
+        return a;
+      }
+
+      document.getElementById('convertBtn').onclick = async () => {
+        if (!Module) return alert('模块未加载完成');
+        console.log('convertBtn clicked');
+        const fileInput = document.getElementById('inputFile');
+        if (!fileInput.files.length) return alert('请选择文件 (.vtp, .vtk, .stl)');
+        const file = fileInput.files[0];
+        const fileName = file.name;
+        const baseName = fileName.replace(/\.[^.]+$/, '');
+        const ext = fileName.split('.').pop().toLowerCase();
+
+        if (!['vtp', 'vtk', 'stl'].includes(ext)) {
+          return alert('不支持的文件格式，请选择 .vtp, .vtk 或 .stl 文件');
+        }
+
+        // 隐藏之前的结果
+        document.getElementById('outputFiles').style.display = 'none';
+        document.getElementById('fileListContent').innerHTML = '';
+
+        const arrayBuffer = await file.arrayBuffer();
+        const inputPath = '/input.' + ext;
+
+        // 清理之前的文件
+        try {
+          Module.FS.unlink(inputPath);
+        } catch (e) {}
+        try {
+          // 递归删除输出目录
+          const rmrf = (path) => {
+            try {
+              const stat = Module.FS.stat(path);
+              if (Module.FS.isDir(stat.mode)) {
+                Module.FS.readdir(path).forEach((f) => {
+                  if (f !== '.' && f !== '..') rmrf(path + '/' + f);
+                });
+                Module.FS.rmdir(path);
+              } else {
+                Module.FS.unlink(path);
+              }
+            } catch (e) {}
+          };
+          rmrf('/output');
+        } catch (e) {}
+
+        Module.FS_createDataFile('/', 'input.' + ext, new Uint8Array(arrayBuffer), true, true);
+
+        // 使用 ccall 正确调用 C 函数
+        const ok = Module.ccall('generate_uvf', 'number', ['string', 'string'], [inputPath, '/output']);
+        console.log('generate_uvf result:', ok, 'file:', fileName, 'size:', arrayBuffer.byteLength);
+
+        if (ok) {
+          try {
+            // 读取输出目录中的所有文件
+            const files = Module.FS.readdir('/output').filter((f) => f !== '.' && f !== '..');
+            const fileListContent = document.getElementById('fileListContent');
+
+            files.forEach((f) => {
+              const filePath = '/output/' + f;
+              const data = Module.FS.readFile(filePath);
+              const mimeType = f.endsWith('.json') ? 'application/json' : 'application/octet-stream';
+              const downloadName = baseName + '_' + f;
+
+              const item = document.createElement('div');
+              item.className = 'file-item';
+
+              const nameSpan = document.createElement('span');
+              nameSpan.className = 'file-name';
+              nameSpan.textContent = f;
+
+              const sizeSpan = document.createElement('span');
+              sizeSpan.className = 'file-size';
+              sizeSpan.textContent = formatSize(data.length);
+
+              const downloadLink = createDownloadLink(data, downloadName, mimeType);
+
+              item.appendChild(nameSpan);
+              item.appendChild(sizeSpan);
+              item.appendChild(downloadLink);
+              fileListContent.appendChild(item);
+
+              console.log('Output file:', f, 'size:', data.length);
+            });
+
+            document.getElementById('outputFiles').style.display = 'block';
+          } catch (e) {
+            console.error('读取输出失败:', e);
+            alert('转换成功但读取输出失败');
+          }
+        } else {
+          const error = Module.ccall('uvf_get_last_error', 'string', [], []);
+          alert('转换失败: ' + (error || '未知错误'));
+        }
+      };
+    </script>
+  </body>
 </html>

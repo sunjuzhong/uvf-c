@@ -23,11 +23,11 @@ jobs:
         id: cache-emsdk
         uses: actions/cache@v4
         with:
-            path: |
-              emsdk
-              ~/.emscripten_cache
-              ~/.emscripten_ports
-            key: emsdk-${{ runner.os }}-4.0.13
+          path: |
+            emsdk
+            ~/.emscripten_cache
+            ~/.emscripten_ports
+          key: emsdk-${{ runner.os }}-4.0.13
 
       - name: Setup emsdk
         if: steps.cache-emsdk.outputs.cache-hit != 'true'
@@ -37,85 +37,18 @@ jobs:
           ./emsdk install 4.0.13
           ./emsdk activate 4.0.13
 
-      - name: Activate emsdk env
-        run: |
-          source emsdk/emsdk_env.sh
-          emcc -v
-        shell: bash
-
       - name: Cache VTK wasm build
         id: cache-vtk
         uses: actions/cache@v4
         with:
           path: third_party/vtk/build-wasm
-          key: vtk-wasm-${{ runner.os }}-v9.3.0-emscripten-4.0.13-${{ hashFiles('CMakeLists.txt') }}
+          key: vtk-wasm-${{ runner.os }}-v9.3.0-emscripten-4.0.13-v2-${{ hashFiles('CMakeLists.txt') }}
 
-      - name: Prepare VTK (clone minimal)
-        if: steps.cache-vtk.outputs.cache-hit != 'true'
+      - name: Build WASM using dev-wasm.sh
         run: |
-          source emsdk/emsdk_env.sh
-          mkdir -p third_party
-          # Clean any existing VTK directory to avoid conflicts
-          rm -rf third_party/vtk
-          git clone --depth=1 --branch v9.3.0 https://github.com/Kitware/VTK.git third_party/vtk
-          cd third_party/vtk
-          mkdir -p build-wasm && cd build-wasm
-          emcmake cmake .. \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DVTK_BUILD_TESTING=OFF \
-            -DVTK_BUILD_EXAMPLES=OFF \
-            -DVTK_BUILD_ALL_MODULES=OFF \
-            -DVTK_ENABLE_WRAPPING=OFF \
-            -DVTK_WRAP_PYTHON=OFF \
-            -DVTK_WRAP_JAVA=OFF \
-            -DVTK_BUILD_DOCUMENTATION=OFF \
-            -DVTK_ENABLE_LOGGING=OFF \
-            -DVTK_GROUP_ENABLE_StandAlone=DEFAULT \
-            -DVTK_GROUP_ENABLE_Rendering=NO \
-            -DVTK_GROUP_ENABLE_Imaging=NO \
-            -DVTK_GROUP_ENABLE_Web=NO \
-            -DVTK_GROUP_ENABLE_Views=NO \
-            -DVTK_USE_MPI=OFF \
-            -DVTK_MODULE_ENABLE_VTK_IOGeometry=YES \
-            -DVTK_MODULE_ENABLE_VTK_FiltersHybrid=YES \
-            -DVTK_MODULE_ENABLE_VTK_ImagingSources=YES \
-            -DVTK_MODULE_ENABLE_VTK_ImagingCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_CommonCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_CommonDataModel=YES \
-            -DVTK_MODULE_ENABLE_VTK_CommonExecutionModel=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOXML=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOXMLParser=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOLegacy=YES \
-            -DVTK_MODULE_ENABLE_VTK_FiltersGeometry=YES \
-            -DVTK_MODULE_ENABLE_VTK_FiltersCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_RenderingCore=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOCellGrid=NO \
-            -DVTK_MODULE_ENABLE_VTK_FiltersCellGrid=NO \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install
-          cmake --build . -j 4
-          cmake --install .
-
-      - name: Configure project (wasm)
-        run: |
-          source emsdk/emsdk_env.sh
-          # Clean any existing build directory to avoid conflicts
-          rm -rf build-wasm
-          emcmake cmake -S . -B build-wasm -DVTK_DIR=$PWD/third_party/vtk/build-wasm/install/lib/cmake/vtk-9.3 -DCMAKE_BUILD_TYPE=Release -DUVF_BUILD_CLI=OFF
+          chmod +x scripts/dev-wasm.sh
+          ./scripts/dev-wasm.sh --emsdk $PWD/emsdk --jobs 4
         shell: bash
-
-      - name: Build project (wasm)
-        run: |
-          source emsdk/emsdk_env.sh
-          cmake --build build-wasm -j 4
-        shell: bash
-
-
-      - name: Copy artifacts to dist
-        run: |
-          mkdir -p dist
-          cp build-wasm/uvf.wasm build-wasm/uvf.js dist/ || true
-          cp index.html demo.js dist/ || true
 
       - name: Upload wasm artifacts
         uses: actions/upload-artifact@v4
@@ -146,6 +79,10 @@ jobs:
 
       - name: Summary
         run: |
-          ls -lh build-wasm || true
-          echo "Artifacts uploaded: uvf-wasm"
+          echo "=== Build artifacts ==="
+          ls -lh dist/ || true
+          echo ""
+          echo "=== uvf.js info ==="
+          head -1 dist/uvf.js || true
+          tail -1 dist/uvf.js || true
         shell: bash

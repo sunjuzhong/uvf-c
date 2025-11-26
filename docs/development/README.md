@@ -49,10 +49,10 @@ The project uses CMake with support for:
    ```bash
    # Ubuntu/Debian
    sudo apt-get install libvtk9-dev
-   
+
    # macOS with Homebrew
    brew install vtk
-   
+
    # Or build from source (see VTK documentation)
    ```
 
@@ -100,25 +100,7 @@ The project uses CMake with support for:
 
 ### WASM Build Process
 
-#### Setup Emscripten
-```bash
-# Install emsdk
-git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk
-./emsdk install latest
-./emsdk activate latest
-source ./emsdk_env.sh
-```
-
-#### Build VTK for WASM
-```bash
-./scripts/bootstrap_wasm.sh
-```
-
-#### Build UVF-C for WASM
-```bash
-./scripts/build_wasm.sh
-```
+See [LOCAL_DEVELOPMENT.md)](docs/wasm/LOCAL_DEVELOPMENT.md)
 
 ### Debugging Tips
 

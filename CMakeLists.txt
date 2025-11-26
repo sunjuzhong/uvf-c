@@ -72,7 +72,7 @@ if("${CMAKE_SYSTEM_NAME}" STREQUAL "Emscripten")
     target_link_libraries(uvf_wasm PRIVATE ${VTK_LIBRARIES})
     set_target_properties(uvf_wasm PROPERTIES
         OUTPUT_NAME "uvf"
-        LINK_FLAGS "--bind -s MODULARIZE=1 -s EXPORT_NAME=\"UVFModule\" -s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM=1 -s ENVIRONMENT=web,worker -s EXPORTED_FUNCTIONS=['_parse_vtp','_generate_uvf','_generate_uvf_structured','_generate_uvf_directory','_uvf_get_last_error','_uvf_get_last_point_count','_uvf_get_last_triangle_count','_uvf_get_last_file_count','_uvf_get_last_group_count','_uvf_get_last_operation_type','_uvf_is_directory','_uvf_count_vtk_files','_uvf_get_version'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','lengthBytesUTF8','stringToUTF8','UTF8ToString']"
+        LINK_FLAGS "--bind -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME=\"UVFModule\" -s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM=1 -s ENVIRONMENT=web,worker -s EXPORTED_FUNCTIONS=['_parse_vtp','_generate_uvf','_generate_uvf_structured','_generate_uvf_directory','_uvf_get_last_error','_uvf_get_last_point_count','_uvf_get_last_triangle_count','_uvf_get_last_file_count','_uvf_get_last_group_count','_uvf_get_last_operation_type','_uvf_is_directory','_uvf_count_vtk_files','_uvf_get_version'] -s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','lengthBytesUTF8','stringToUTF8','UTF8ToString']"
     )
 else()
     # Native build: static lib + CLI tool

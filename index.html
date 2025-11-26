@@ -82,10 +82,10 @@
       <h3>转换结果</h3>
       <div id="fileListContent"></div>
     </div>
-    <script src="./uvf.js"></script>
-    <script>
+    <script type="module">
+      import UVFModule from './uvf.js';
+
       let Module;
-      // UVFModule 是全局变量（由 uvf.js 定义）
       UVFModule().then((m) => {
         Module = m;
         document.getElementById('convertBtn').disabled = false;

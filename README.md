@@ -44,21 +44,6 @@ source ~/emsdk/emsdk_env.sh
 
 📖 **详细指南**: [本地 WASM 开发文档](docs/wasm/LOCAL_DEVELOPMENT.md)
 
-<details>
-<summary>手动构建步骤</summary>
-
-```bash
-# Setup Emscripten
-source /path/to/emsdk/emsdk_env.sh
-
-# Build VTK for WASM (first time only)
-./scripts/bootstrap_wasm.sh
-
-# Build UVF-C for WASM
-./scripts/build_wasm.sh
-```
-</details>
-
 ## Usage
 
 ### Command Line Interface

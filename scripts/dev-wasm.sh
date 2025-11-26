@@ -238,6 +238,7 @@ setup_vtk() {
         -DVTK_WRAP_JAVA=OFF \
         -DVTK_BUILD_DOCUMENTATION=OFF \
         -DVTK_ENABLE_LOGGING=OFF \
+        -DVTK_USE_64BIT_IDS=ON \
         -DVTK_GROUP_ENABLE_StandAlone=DEFAULT \
         -DVTK_GROUP_ENABLE_Rendering=NO \
         -DVTK_GROUP_ENABLE_Imaging=NO \

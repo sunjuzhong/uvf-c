@@ -301,6 +301,21 @@ build_project() {
     log_ok "项目构建完成"
 }
 
+# ========== 计算文件哈希 ==========
+get_file_hash() {
+    local file="$1"
+    local hash=""
+    if command -v md5sum &>/dev/null; then
+        hash=$(md5sum "$file" | cut -c1-8)
+    elif command -v md5 &>/dev/null; then
+        hash=$(md5 -q "$file" | cut -c1-8)
+    else
+        # 降级：使用文件大小和修改时间
+        hash=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+    fi
+    echo "$hash"
+}
+
 # ========== 收集产物 ==========
 collect_artifacts() {
     local dist_dir="$PROJECT_ROOT/dist"
@@ -308,13 +323,58 @@ collect_artifacts() {
 
     log_info "复制产物到 dist/..."
 
-    cp "$PROJECT_ROOT/build-wasm/uvf.js" "$dist_dir/" 2>/dev/null || true
-    cp "$PROJECT_ROOT/build-wasm/uvf.wasm" "$dist_dir/" 2>/dev/null || true
-    cp "$PROJECT_ROOT/index.html" "$dist_dir/" 2>/dev/null || true
+    # 清理旧的带哈希的文件
+    rm -f "$dist_dir"/uvf.*.js "$dist_dir"/uvf.*.wasm 2>/dev/null || true
+
+    # 复制并重命名带哈希后缀
+    local js_src="$PROJECT_ROOT/build-wasm/uvf.js"
+    local wasm_src="$PROJECT_ROOT/build-wasm/uvf.wasm"
+
+    if [[ -f "$js_src" && -f "$wasm_src" ]]; then
+        # 计算哈希（基于两个文件的组合）
+        local hash=$(cat "$js_src" "$wasm_src" | (md5sum 2>/dev/null || md5) | cut -c1-8)
+
+        local js_name="uvf.${hash}.js"
+        local wasm_name="uvf.${hash}.wasm"
+
+        cp "$js_src" "$dist_dir/$js_name"
+        cp "$wasm_src" "$dist_dir/$wasm_name"
+
+        log_info "生成带哈希的文件: $js_name, $wasm_name"
+
+        # 更新 JS 文件中的 wasm 文件名引用
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "s/uvf\.wasm/$wasm_name/g" "$dist_dir/$js_name"
+        else
+            sed -i "s/uvf\.wasm/$wasm_name/g" "$dist_dir/$js_name"
+        fi
+
+        # 复制并更新 index.html 中的引用
+        if [[ -f "$PROJECT_ROOT/index.html" ]]; then
+            cp "$PROJECT_ROOT/index.html" "$dist_dir/"
+            if [[ "$(uname)" == "Darwin" ]]; then
+                sed -i '' "s|from './uvf.js'|from './$js_name'|g" "$dist_dir/index.html"
+                sed -i '' "s|src=\"./uvf.js\"|src=\"./$js_name\"|g" "$dist_dir/index.html"
+            else
+                sed -i "s|from './uvf.js'|from './$js_name'|g" "$dist_dir/index.html"
+                sed -i "s|src=\"./uvf.js\"|src=\"./$js_name\"|g" "$dist_dir/index.html"
+            fi
+        fi
+
+        # 保存哈希信息到文件
+        echo "{\"js\": \"$js_name\", \"wasm\": \"$wasm_name\", \"hash\": \"$hash\"}" > "$dist_dir/manifest.build.json"
+        log_info "构建清单已保存到 manifest.build.json"
+    else
+        log_warn "未找到构建产物，复制原始文件..."
+        cp "$js_src" "$dist_dir/" 2>/dev/null || true
+        cp "$wasm_src" "$dist_dir/" 2>/dev/null || true
+        cp "$PROJECT_ROOT/index.html" "$dist_dir/" 2>/dev/null || true
+    fi
+
     cp "$PROJECT_ROOT/demo.js" "$dist_dir/" 2>/dev/null || true
 
     log_ok "产物已复制到 dist/:"
-    ls -lh "$dist_dir"/*.{js,wasm,html} 2>/dev/null || true
+    ls -lh "$dist_dir"/*.{js,wasm,html,json} 2>/dev/null || true
 }
 
 # ========== 启动开发服务器 ==========
@@ -360,9 +420,10 @@ main() {
     log_ok "构建完成!"
     echo ""
     echo "产物位置: $PROJECT_ROOT/dist/"
-    echo "  - uvf.js"
-    echo "  - uvf.wasm"
+    echo "  - uvf.<hash>.js"
+    echo "  - uvf.<hash>.wasm"
     echo "  - index.html"
+    echo "  - manifest.build.json (构建信息)"
     echo ""
 
     if [[ $SERVE -eq 1 ]]; then
